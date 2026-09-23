@@ -75,6 +75,11 @@ curl "https://graph.facebook.com/v26.0/WABA_ID/phone_numbers?fields=id,display_p
   -H "Authorization: Bearer TOKEN"
 ```
 
+**Change before running:**
+
+- Remove `WABA_ID` → put your WhatsApp Business Account ID
+- Remove `TOKEN` → put your System User token (Step 3)
+
 **Expected:**
 
 ```json
@@ -94,6 +99,11 @@ curl -X POST "https://graph.facebook.com/v26.0/WABA_ID/subscribed_apps" \
   -H "Authorization: Bearer TOKEN"
 ```
 
+**Change before running:**
+
+- Remove `WABA_ID` → put your WhatsApp Business Account ID
+- Remove `TOKEN` → put your System User token (Step 3)
+
 **Expected:**
 
 ```json
@@ -107,6 +117,11 @@ curl "https://graph.facebook.com/v26.0/WABA_ID/subscribed_apps" \
   -H "Authorization: Bearer TOKEN"
 ```
 
+**Change before running:**
+
+- Remove `WABA_ID` → put your WhatsApp Business Account ID
+- Remove `TOKEN` → put your System User token (Step 3)
+
 **Expected:** your App name inside `data`.
 
 ```json
@@ -119,7 +134,7 @@ If you see an App you don't know, remove it. It receives a copy of every message
 
 **Goal:** One URL that answers Meta's verification (GET) and receives messages (POST).
 
-1. Create a new workflow, copy the JSON below (or import [`workflow/whatsapp-webhook.json`](workflow/whatsapp-webhook.json)), click the empty canvas and press `Cmd + V`.
+1. Create a new workflow, copy the JSON below (or import [`whatsapp-webhook.json`](whatsapp-webhook.json)), click the empty canvas and press `Cmd + V`.
 2. **Webhook** node → change **Path** to a unique name. Two active workflows can't share a path.
 3. **Check Verify Token** node → change `VERIFY_TOKEN` to your own word.
 4. **Save**, then **Activate** (or **Publish** in n8n 2.x).
@@ -221,6 +236,12 @@ Don't use the **WhatsApp Trigger** node on the same App. It registers its own we
 curl -i "https://DOMAIN/webhook/PATH?hub.mode=subscribe&hub.verify_token=VERIFY_TOKEN&hub.challenge=12345"
 ```
 
+**Change before running:**
+
+- Remove `DOMAIN` → put your n8n domain, e.g. `n8n.example.com`
+- Remove `PATH` → put the Path you set in the Webhook node
+- Remove `VERIFY_TOKEN` → put the word you set in the Check Verify Token node
+
 **Expected:** status `200` and the body is exactly `12345`.
 
 ```
@@ -260,6 +281,14 @@ curl -X POST "https://graph.facebook.com/v26.0/APP_ID/subscriptions" \
   -d "access_token=APP_ID|APP_SECRET"
 ```
 
+**Change before running:**
+
+- Remove `APP_ID` → put your App ID (App settings → Basic)
+- Remove `APP_SECRET` → put your App secret (App settings → Basic → Show)
+- Remove `DOMAIN` → put your n8n domain, e.g. `n8n.example.com`
+- Remove `PATH` → put the Path you set in the Webhook node
+- Remove `VERIFY_TOKEN` → put the word you set in the Check Verify Token node
+
 **Expected:**
 
 ```json
@@ -273,6 +302,11 @@ This uses the **App token** (`APP_ID|APP_SECRET`), not the System User token.
 ```bash
 curl "https://graph.facebook.com/v26.0/APP_ID/subscriptions?access_token=APP_ID|APP_SECRET"
 ```
+
+**Change before running:**
+
+- Remove `APP_ID` → put your App ID (App settings → Basic)
+- Remove `APP_SECRET` → put your App secret (App settings → Basic → Show)
 
 **Expected:**
 
@@ -289,9 +323,14 @@ If it returns `{"data":[]}`, no webhook is registered. Run Option B.
 **Quick check before publishing:** In **Webhook fields**, click **Test** next to **messages**. If it reaches n8n, the webhook is fine and publishing is the only missing step.
 
 1. **App settings** → **Basic**.
-2. Fill **Privacy policy URL** (a real page that opens) and **Category**.
-3. **Save changes**.
-4. Left menu → **Publish** → **Publish**.
+2. Fill these fields:
+    - **Privacy policy URL:** a public page that opens (a public Notion page works)
+    - **User data deletion:** choose **Data deletion instructions URL** and use the same link
+    - **Category:** Business and pages
+    - **App icon:** a square image (if required)
+3. Scroll down → **Save changes**.
+4. Left menu → **Publish** (next to **Unpublished**).
+5. If it lists missing items, complete them and come back. Otherwise click **Publish**.
 
 **Expected:** The label next to **Publish** is no longer **Unpublished**.
 
