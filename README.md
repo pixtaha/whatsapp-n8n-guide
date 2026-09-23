@@ -7,13 +7,13 @@ Last updated: Sep 2026
 This guide connects a WhatsApp number to an n8n workflow using Meta Cloud API, from a new App to a working reply. The phone number lives inside a WABA, and the App must be subscribed to that WABA to receive messages.
 
 ```mermaid
-flowchart TD
-  BP[Business Portfolio] --> WABA[WABA<br/>WhatsApp Business Account]
-  WABA --> PN[Phone Number]
-  BP --> APP[Meta App]
-  BP --> SU[System User<br/>creates the token]
-  APP -- subscribed to --> WABA
-  APP -- webhook --> N8N[n8n Webhook node]
+flowchart LR
+  subgraph BP[Business Portfolio]
+    SU[System User] -->|token| APP[Meta App]
+    APP -->|subscribed to| WABA[WABA]
+    WABA --> PN[Phone Number]
+  end
+  APP -->|webhook| N8N[n8n Webhook node]
 ```
 
 The App, the WABA and the System User must all be in the same Business Portfolio.
