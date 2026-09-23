@@ -461,6 +461,82 @@ Make one credential per App and name it clearly. Never hard-code the Phone Numbe
 
 **Rules:** max 3 buttons · `title` max 20 characters · each `id` unique · only within 24 hours of the user's last message.
 
+## WhatsApp Trigger vs Webhook node
+
+**Rule:** Use one method per App, never both. Meta allows only **one callback URL per App**.
+
+| | Webhook node (this guide) | WhatsApp Trigger node |
+| --- | --- | --- |
+| Registers the webhook in Meta | You do it (dashboard or API) | The node does it on Activate |
+| Verify token | You choose it | The node generates it |
+| On Deactivate or failure | Webhook stays registered | **Deletes the App's webhook**, even if it isn't its own |
+| Test vs Production | Separate, no conflict | Switching re-registers the webhook |
+| Best for | Production, many numbers, dev/prod | Quick demos only, on a separate App |
+
+**Error when activating the WhatsApp Trigger:**
+
+```
+The WhatsApp App ID ... already has a webhook subscription. Delete it or use another App before executing the trigger.
+```
+
+Meaning: the App already has a webhook (your Webhook node). Don't delete it. Use another App for the trigger.
+
+### Recovery: messages stopped after trying the WhatsApp Trigger
+
+**1. Remove the trigger first**
+
+Deactivate the workflow that has the **WhatsApp Trigger**, then delete the node (or the whole workflow). If it stays, it can delete the webhook again.
+
+**2. Check the webhook**
+
+```bash
+curl "https://graph.facebook.com/v26.0/APP_ID/subscriptions?access_token=APP_ID|APP_SECRET"
+```
+
+**Change before running:**
+
+- Remove `APP_ID` (2 places) → put your App ID (App settings → Basic)
+- Remove `APP_SECRET` → put your App secret (App settings → Basic → Show)
+
+**Expected (webhook was deleted):**
+
+```json
+{"data":[]}
+```
+
+**3. Register the webhook again**
+
+Make sure your Webhook-node workflow is **Active** first. Meta verifies immediately.
+
+```bash
+curl -X POST "https://graph.facebook.com/v26.0/APP_ID/subscriptions" \
+  -d "object=whatsapp_business_account" \
+  -d "callback_url=https://DOMAIN/webhook/PATH" \
+  -d "verify_token=VERIFY_TOKEN" \
+  -d "fields=messages" \
+  -d "access_token=APP_ID|APP_SECRET"
+```
+
+**Change before running:**
+
+- Remove `APP_ID` (2 places) → put your App ID (App settings → Basic)
+- Remove `APP_SECRET` → put your App secret (App settings → Basic → Show)
+- Remove `DOMAIN` → put your n8n domain, e.g. `n8n.example.com`
+- Remove `PATH` → put the Path you set in the Webhook node
+- Remove `VERIFY_TOKEN` → put the word you set in the Check Verify Token node
+
+**Expected:**
+
+```json
+{"success":true}
+```
+
+**4. Check again and test**
+
+Run the command from step 2 again. Expected: your `callback_url` and `messages` in `fields`. Then send a WhatsApp message and check **Executions**.
+
+**Keep the GET branch** (Check Verify Token → Return Challenge / Reject) forever. It runs only when Meta verifies the URL, and step 3 needs it.
+
 ## Troubleshooting
 
 Find your symptom, then run the check. Most problems come from one of these.
@@ -478,7 +554,8 @@ Find your symptom, then run the check. Most problems come from one of these.
 | `GET /APP_ID/subscriptions` returns `{"data":[]}` | No webhook registered | Step 7, Option B |
 | Dashboard **Test** works, real messages don't | App unpublished | Step 8 |
 | Reply comes from the wrong number | Hard-coded Phone Number ID or old token | Use `phone_number_id` from the message + the right credential |
-| Messages stopped after deactivating a workflow | WhatsApp Trigger deleted the webhook | Step 7 again |
+| Messages stopped after deactivating a workflow | WhatsApp Trigger deleted the webhook | [Recovery](#recovery-messages-stopped-after-trying-the-whatsapp-trigger) |
+| `already has a webhook subscription` (WhatsApp Trigger) | App already has a webhook | Use another App for the trigger. Don't mix both |
 
 **Checks in order when messages don't arrive:**
 
