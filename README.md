@@ -33,6 +33,24 @@ Any word in CAPITAL\_LETTERS inside a command is a placeholder. Replace it befor
 | `PATH` | Webhook node path | n8n Webhook node |
 | `VERIFY_TOKEN` | Any secret word you choose (letters, numbers, `_` only) | You choose it |
 
+### Keep secrets out of commands
+
+Store the token and App secret once in your terminal, then every command can use them without pasting:
+
+```bash
+export TOKEN="PASTE_TOKEN_HERE"
+export APP_SECRET="PASTE_APP_SECRET_HERE"
+```
+
+**Change before running:**
+
+- Remove `PASTE_TOKEN_HERE` → put your System User token
+- Remove `PASTE_APP_SECRET_HERE` → put your App secret
+
+**Expected:** no output. The variables stay until you close the terminal window. Then use `$TOKEN` and `$APP_SECRET` in commands, e.g. `-H "Authorization: Bearer $TOKEN"`.
+
+Tokens, App secrets and PINs belong in a password manager only. Never paste them in chats, screenshots or docs. If one leaks: **Revoke tokens** (System user) or **Reset** (App secret).
+
 ## Step 1: Create the App
 
 **Goal:** A Meta App with the WhatsApp use case, inside the same Business Portfolio as the number.
@@ -49,6 +67,43 @@ Any word in CAPITAL\_LETTERS inside a command is a placeholder. Replace it befor
 
 Don't use **Add phone number** in the App dashboard if the number is already Connected in the WABA. Never click **disconnect it from the existing account**.
 
+## Step 1b: Add a new number (only if it isn't in any WABA yet)
+
+**Goal:** A brand-new number added to a WABA and registered on Cloud API.
+
+**Before starting:** the number receives SMS or calls, and it is **not** active on WhatsApp or WhatsApp Business app.
+
+1. App → **Use cases** → **Connect on WhatsApp** → **Customize** → **Step 2. Production setup** → **Register your WhatsApp phone number** → **Add phone number**.
+2. **WA Business Profile:** display name, category, and a WABA in the **same portfolio**.
+3. Country code + number (without the first 0) → **Text message** or **Phone call** → enter the code.
+4. The number shows **Not registered**. Turn on **Subscribe webhooks** first, then click **Register** and set a 6-digit PIN. Save the PIN in a password manager.
+
+**Expected:** the number shows **Registered**.
+
+**Don't add it from Step 1. Try it out.** That window adds a *test recipient* and sends the code on WhatsApp, so a number without WhatsApp never receives it.
+
+**If Register says "Registration failed":** wait a few minutes and retry once. If it still fails, register with the API after Step 3:
+
+```bash
+curl -X POST "https://graph.facebook.com/v26.0/PHONE_NUMBER_ID/register" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"messaging_product":"whatsapp","pin":"123456"}'
+```
+
+**Change before running:**
+
+- Remove `PHONE_NUMBER_ID` → put the number's ID (shown under the number)
+- Remove `123456` → put your 6-digit PIN
+
+**Expected:**
+
+```json
+{"success":true}
+```
+
+A business can have **2 numbers** until Business verification, then up to 20. If a new WABA doesn't appear in Business Settings, refresh the page or search by its ID.
+
 ## Step 2: Give the System User access
 
 **Goal:** The System User can manage the App and the WABA, so its token will work.
@@ -58,6 +113,8 @@ Don't use **Add phone number** in the App dashboard if the number is already Con
 3. **Assign assets** again → **WhatsApp accounts** → your WABA → **Full control** → **Assign**.
 
 **Check:** The **Assigned assets** tab shows both the App and the WABA.
+
+System users belong to one portfolio. If the portfolio has none, click **Add** → name → role **Admin** → **Create system user**.
 
 ## Step 3: Generate the token and get the Phone Number ID
 
@@ -138,6 +195,8 @@ If you see an App you don't know, remove it. It receives a copy of every message
 2. **Webhook** node → change **Path** to a unique name. Two active workflows can't share a path.
 3. **Check Verify Token** node → change `VERIFY_TOKEN` to your own word.
 4. **Save**, then **Activate** (or **Publish** in n8n 2.x).
+
+**Path** (Webhook node) is part of the URL. **Verify token** (Check Verify Token node, second condition, right field) is the password. Don't swap them. In n8n 2.x, click **Publish** after every edit, or the old version keeps running.
 
 Don't use the **WhatsApp Trigger** node on the same App. It registers its own webhook and deletes it when deactivated.
 
@@ -548,6 +607,12 @@ Find your symptom, then run the check. Most problems come from one of these.
 | App not in **Select app** list | App created in another portfolio | Create a new App in the right portfolio |
 | `already registered to a WhatsApp account` | Adding a number that is already Connected | Close the window. Don't add or disconnect it |
 | `404 ... is not registered` | Workflow not active | Activate / Publish the workflow |
+| `403` on the verify curl | Verify token doesn't match the Check Verify Token node, or edit not published | Fix the right field, remove spaces, **Publish** |
+| URL changed to `/webhook/<your token>` | Verify token typed in the Webhook **Path** | Put the path back, token goes in Check Verify Token |
+| `Invalid OAuth access token signature` | `APP_SECRET` placeholder or wrong/old secret | Use `$APP_SECRET` with the current secret |
+| Verification code never arrives | Number added in **Try it out** (code sent on WhatsApp) | Add it in **Production setup** (SMS or call) |
+| `Registration failed. Please try again.` | Generic dashboard error | Turn on **Subscribe webhooks**, then Register. Or use the API register command |
+| New WABA missing in Business Settings | Page not refreshed | Refresh or search by ID |
 | `400` with no body | Non-English characters in the URL | Use letters, numbers and `_` only |
 | `{"message":"Webhook call received"}` | WhatsApp Trigger node answered, not your Webhook node | Stop the WhatsApp Trigger workflow |
 | `The callback URL or verify token couldn't be validated` | curl test in Step 6 fails | Fix n8n first, then verify in Meta |
