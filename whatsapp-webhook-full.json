@@ -1,0 +1,134 @@
+{
+  "name": "WhatsApp Webhook (full)",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "PATH",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-368, 128],
+      "webhookId": "00000000-0000-4000-8000-000000000001",
+      "id": "00000000-0000-4000-8000-000000000011"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.query['hub.mode'] }}",
+              "rightValue": "subscribe",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.query['hub.verify_token'] }}",
+              "rightValue": "VERIFY_TOKEN",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check Verify Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-128, 32],
+      "id": "00000000-0000-4000-8000-000000000012"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('Webhook').item.json.query['hub.challenge'] }}",
+        "options": { "responseCode": 200 }
+      },
+      "name": "Return Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [112, -160],
+      "id": "00000000-0000-4000-8000-000000000013"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": { "responseCode": 403 }
+      },
+      "name": "Reject",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [112, 48],
+      "id": "00000000-0000-4000-8000-000000000014"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": { "responseCode": 200 }
+      },
+      "name": "Ack Message",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-128, 272],
+      "id": "00000000-0000-4000-8000-000000000015"
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $('Webhook').first().json.body?.entry?.[0]?.changes?.[0]?.value;\n\n// ignore status updates (sent / delivered / read)\nif (!value?.messages?.length) {\n  return [];\n}\n\nconst msg = value.messages[0];\nconst contact = value.contacts?.[0];\n\nreturn [{\n  json: {\n    phone_number_id: value.metadata.phone_number_id,\n    from: msg.from,\n    name: contact?.profile?.name ?? '',\n    message_id: msg.id,\n    timestamp: Number(msg.timestamp),\n    type: msg.type,\n    text: msg.type === 'text' ? msg.text.body : null,\n    media_id: msg[msg.type]?.id ?? null,\n    button_reply: msg.interactive?.button_reply?.id\n      ?? msg.interactive?.list_reply?.id\n      ?? null,\n    button_title: msg.interactive?.button_reply?.title ?? null,\n  }\n}];"
+      },
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [112, 272],
+      "id": "00000000-0000-4000-8000-000000000016"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v26.0/{{ $('Parse Message').item.json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"recipient_type\": \"individual\",\n  \"to\": \"{{ $('Parse Message').item.json.from }}\",\n  \"type\": \"interactive\",\n  \"interactive\": {\n    \"type\": \"button\",\n    \"body\": {\n      \"text\": \"أهلاً بيك! تحب تعمل إيه؟\"\n    },\n    \"action\": {\n      \"buttons\": [\n        { \"type\": \"reply\", \"reply\": { \"id\": \"btn_book\", \"title\": \"احجز موعد\" } },\n        { \"type\": \"reply\", \"reply\": { \"id\": \"btn_prices\", \"title\": \"الأسعار\" } },\n        { \"type\": \"reply\", \"reply\": { \"id\": \"btn_support\", \"title\": \"كلم الدعم\" } }\n      ]\n    }\n  }\n}",
+        "options": {}
+      },
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [352, 272],
+      "id": "00000000-0000-4000-8000-000000000017"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Check Verify Token", "type": "main", "index": 0 }],
+        [{ "node": "Ack Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Verify Token": {
+      "main": [
+        [{ "node": "Return Challenge", "type": "main", "index": 0 }],
+        [{ "node": "Reject", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ack Message": {
+      "main": [[{ "node": "Parse Message", "type": "main", "index": 0 }]]
+    },
+    "Parse Message": {
+      "main": [[{ "node": "HTTP Request", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}
