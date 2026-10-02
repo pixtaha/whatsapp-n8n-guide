@@ -71,7 +71,10 @@ Don't use **Add phone number** in the App dashboard if the number is already Con
 
 **Goal:** A brand-new number added to a WABA and registered on Cloud API.
 
-**Before starting:** the number receives SMS or calls, and it is **not** active on WhatsApp or WhatsApp Business app.
+**Before starting:**
+
+- The number receives SMS or calls, and it is **not** active on WhatsApp or WhatsApp Business app.
+- **Pick a display name that matches the Business portfolio.** Meta rejects names it can't link to the business (e.g. a brand name inside a portfolio with another name). Add your website in **Business Settings → Business info** first, with the same name visible on the site. Check the spelling: customers see this name.
 
 1. App → **Use cases** → **Connect on WhatsApp** → **Customize** → **Step 2. Production setup** → **Register your WhatsApp phone number** → **Add phone number**.
 2. **WA Business Profile:** display name, category, and a WABA in the **same portfolio**.
@@ -82,7 +85,33 @@ Don't use **Add phone number** in the App dashboard if the number is already Con
 
 **Don't add it from Step 1. Try it out.** That window adds a *test recipient* and sends the code on WhatsApp, so a number without WhatsApp never receives it.
 
-**If Register says "Registration failed":** wait a few minutes and retry once. If it still fails, register with the API after Step 3:
+**If Register says "Registration failed":** the dashboard hides the real reason, even with **Subscribe webhooks** on. Use the API after Step 3. It returns the exact error.
+
+**Code: check the number first**
+
+```bash
+curl "https://graph.facebook.com/v26.0/WABA_ID/phone_numbers?fields=id,display_phone_number,verified_name,status,code_verification_status,name_status" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Change before running:**
+
+- Remove `WABA_ID` → put the WABA ID (shown under the WABA name)
+
+**Expected:**
+
+```json
+{"data":[{"id":"123456789012345","display_phone_number":"+20 10 00000000","verified_name":"My Business","status":"PENDING","code_verification_status":"VERIFIED","name_status":"AVAILABLE_WITHOUT_REVIEW"}]}
+```
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `code_verification_status` | `VERIFIED` | The SMS/call code worked |
+| `status` | `PENDING` | Not registered yet. After register: `CONNECTED` |
+| `name_status` | `AVAILABLE_WITHOUT_REVIEW` / `APPROVED` | The display name is fine |
+| `name_status` | `DECLINED` | Name rejected. Fix it before going live |
+
+**Code: register**
 
 ```bash
 curl -X POST "https://graph.facebook.com/v26.0/PHONE_NUMBER_ID/register" \
@@ -93,14 +122,22 @@ curl -X POST "https://graph.facebook.com/v26.0/PHONE_NUMBER_ID/register" \
 
 **Change before running:**
 
-- Remove `PHONE_NUMBER_ID` → put the number's ID (shown under the number)
-- Remove `123456` → put your 6-digit PIN
+- Remove `PHONE_NUMBER_ID` → put the `id` from the check above
+- Remove `123456` → put your 6-digit PIN. If this number had a PIN before (e.g. you deleted and re-added it), use the **old** PIN.
 
 **Expected:**
 
 ```json
 {"success":true}
 ```
+
+Run the check again: `status` must be `CONNECTED`.
+
+| Error contains | Meaning | Fix |
+| --- | --- | --- |
+| `PIN Mismatch` / `133005` | The number has an old PIN | Use the old PIN |
+| `133016` / rate limit | Too many register attempts | Wait about an hour |
+| `permission` / `(#100)` | Token can't reach this WABA | Assign the WABA to the System User (Step 2), new token |
 
 A business can have **2 numbers** until Business verification, then up to 20. If a new WABA doesn't appear in Business Settings, refresh the page or search by its ID.
 
@@ -148,6 +185,8 @@ The `id` here is the `PHONE_NUMBER_ID`. `status` must be `CONNECTED`.
 ## Step 4: Connect the App to the WABA
 
 **Goal:** Tell Meta to send this WABA's messages to your App. The token decides which App gets connected.
+
+Turning on **Subscribe webhooks** in the dashboard (WABA card) already does this. Run the **check** below first, and connect only if your App isn't listed.
 
 **Code: connect**
 
@@ -596,6 +635,17 @@ Run the command from step 2 again. Expected: your `callback_url` and `messages` 
 
 **Keep the GET branch** (Check Verify Token → Return Challenge / Reject) forever. It runs only when Meta verifies the URL, and step 3 needs it.
 
+## Reset a number (delete and connect it again)
+
+Use this to show the full setup live, or to start over after a rejected display name.
+
+1. **Backup:** n8n → the workflow → **⋯** → **Download**.
+2. **Delete the number:** Business Settings → **WhatsApp accounts** → the WABA → **WhatsApp Manager** → **Phone numbers** → **⚙️** next to the number → **Delete phone number**.
+3. **Old workflow:** Deactivate it, so nothing waits for the deleted number.
+4. **Connect it again from Step 1b.** Create a **new** workflow from `whatsapp-webhook.json` (import, don't duplicate), so no old token or Phone Number ID comes with it.
+
+When you re-add the number, keep the **old PIN** ready, and pick a display name that matches the portfolio. Do a full rehearsal before a live session.
+
 ## Troubleshooting
 
 Find your symptom, then run the check. Most problems come from one of these.
@@ -611,7 +661,10 @@ Find your symptom, then run the check. Most problems come from one of these.
 | URL changed to `/webhook/<your token>` | Verify token typed in the Webhook **Path** | Put the path back, token goes in Check Verify Token |
 | `Invalid OAuth access token signature` | `APP_SECRET` placeholder or wrong/old secret | Use `$APP_SECRET` with the current secret |
 | Verification code never arrives | Number added in **Try it out** (code sent on WhatsApp) | Add it in **Production setup** (SMS or call) |
-| `Registration failed. Please try again.` | Generic dashboard error | Turn on **Subscribe webhooks**, then Register. Or use the API register command |
+| `Registration failed. Please try again.` | Generic dashboard error | Turn on **Subscribe webhooks** and retry once, then use the API register command (Step 1b) to see the real error |
+| Display name **Rejected** / `name_status: DECLINED` | Name not linked to the portfolio or website | **Edit Display Name** to match the portfolio, add the website in Business info |
+| `PIN Mismatch` / `133005` on register | Number has an old PIN | Use the old PIN |
+| `133016` on register | Too many attempts | Wait about an hour |
 | New WABA missing in Business Settings | Page not refreshed | Refresh or search by ID |
 | `400` with no body | Non-English characters in the URL | Use letters, numbers and `_` only |
 | `{"message":"Webhook call received"}` | WhatsApp Trigger node answered, not your Webhook node | Stop the WhatsApp Trigger workflow |
