@@ -1,0 +1,909 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "content": "### 🔧 1) Webhook\n**غيّر الـ Path** لاسم خاص بيك.\nالرابط اللي هتديه لـ Meta:\n`https://<n8n-domain>/webhook/<Path>`\nلازم GET + POST مفعّلين.",
+        "height": 190,
+        "width": 300,
+        "color": 3
+      },
+      "name": "🔧 1 Webhook",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -600,
+        40
+      ],
+      "id": "fd9e4f27-1b29-41df-81ec-f18398e7421f"
+    },
+    {
+      "parameters": {
+        "content": "### 🔧 2) Verify Token\nغيّر `CHANGE_ME_VERIFY_TOKEN` لكلمة سر من عندك.\n**نفس الكلمة بالظبط** تتحط في:\nMeta App → WhatsApp → Configuration → Verify token",
+        "height": 180,
+        "width": 300,
+        "color": 3
+      },
+      "name": "🔧 2 Verify Token",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -150
+      ],
+      "id": "b26d8c38-c42f-4f16-b110-0ff0c86a38ea"
+    },
+    {
+      "parameters": {
+        "content": "### 🔧 3) Config\nغيّر `supabase_url` و `system_prompt`.\n`phone_number_id` سيبه: بيتقري من الويبهوك تلقائي.\n`graph_version` واحدة في كل الورك فلو.",
+        "height": 170,
+        "width": 300,
+        "color": 3
+      },
+      "name": "🔧 3 Config",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        150,
+        390
+      ],
+      "id": "ad3e21ce-5bae-4670-ab5d-4eed42229efd"
+    },
+    {
+      "parameters": {
+        "content": "### 🔧 4) Postgres Credential\nاختار credential الداتابيز بتاعتك.\nشغّل `supabase_whatsapp_messages_table.sql` في Supabase SQL Editor **قبل** أول رسالة.",
+        "height": 190,
+        "width": 260,
+        "color": 3
+      },
+      "name": "🔧 4 Postgres (incoming)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -40
+      ],
+      "id": "f3db8760-d330-41dd-a976-d838a2782f03"
+    },
+    {
+      "parameters": {
+        "content": "### 🔧 5) WhatsApp Credential\nHeader Auth:\n- Name: `Authorization`\n- Value: `Bearer <TOKEN>`\nالتوكن في الـ credential بس. **مش في النود.**",
+        "height": 200,
+        "width": 260,
+        "color": 3
+      },
+      "name": "🔧 5 WhatsApp Credential",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1330,
+        -70
+      ],
+      "id": "5d4facee-ad6a-4a15-983f-9db4f668eaf5"
+    },
+    {
+      "parameters": {
+        "content": "### 🔧 6) Postgres Credential\nنفس credential رقم 4.\nبيحدّث حالة الرسايل **الصادرة** بس (اللي انت سجلتها بعد الإرسال).",
+        "height": 160,
+        "width": 280,
+        "color": 3
+      },
+      "name": "🔧 6 Postgres (status)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        870,
+        410
+      ],
+      "id": "ff06035a-2d12-449f-bbb2-b8057bb59bd0"
+    },
+    {
+      "parameters": {
+        "content": "### ➡️ 7) ردودك\nكل فرع (Text / Media / Location / Button / Unsupported) فاضي عن قصد.\nوصّل بعده HTTP Request node للإرسال + Postgres node تسجّل الرسالة الصادرة (direction = outgoing).",
+        "height": 200,
+        "width": 300,
+        "color": 5
+      },
+      "name": "➡️ 7 ردودك هنا",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        -110
+      ],
+      "id": "fc86455a-921f-440f-ad9a-942109c38d4a"
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ قبل ما تشغّل: 5 حاجات تتغيّر\n\n1. **Webhook** → Path: اسم خاص بيك.\n2. **Check Verify Token** → `CHANGE_ME_VERIFY_TOKEN` → كلمة سر من عندك، ونفسها في Meta → Webhooks.\n3. **Mark as Read** → Credential: Header Auth (`Authorization: Bearer <TOKEN>`).\n4. **Log Incoming Message** + **Update WhatsApp Status** → Credential: Postgres. شغّل SQL الجدول الأول.\n5. **Config** → `supabase_url` و `system_prompt`.\n\n**بعدها:** Publish → اختبر GET بـ curl → سجّل الويبهوك في Meta (fields: messages) → ابعت رسالة.\n\n⚠️ الـ pinData في Webhook بيانات مزيفة للشرح. اعمل Unpin قبل الإنتاج.\n🔒 ممنوع أي توكن / App Secret / PIN جوه أي نود.",
+        "height": 520,
+        "width": 560,
+        "color": 4
+      },
+      "name": "📌 Setup Checklist",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1060,
+        -160
+      ],
+      "id": "5ada7bc3-c1f9-49ce-947d-a2468cc060ed"
+    },
+    {
+      "parameters": {
+        "content": "## 🧭 الورك فلو بيشتغل إزاي\n\n**GET** (مرة واحدة): Meta بتبعت verify_token + challenge → لو التوكن صح نرجّع الـ challenge.\n\n**POST** (كل رسالة): نرد 200 فورًا → Config → Event Type:\n- **messages** → Parse → Log في DB → لو جديدة → Mark as Read → Message Type → (ردودك هنا)\n- **statuses** → Parse → Update حالة الرسالة الصادرة\n\n💡 الرسايل اللي **انت** بتبعتها مش بتوصل في الويبهوك؛ لازم تسجلها بنفسك بعد كل HTTP Request إرسال (direction = outgoing + wa_message_id من الرد).",
+        "height": 420,
+        "width": 560,
+        "color": 6
+      },
+      "name": "📌 How it works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1060,
+        400
+      ],
+      "id": "41f3294b-cd22-46fd-8138-f65f7ab4f733"
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "whatsapp-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        256
+      ],
+      "id": "9b95a72d-b4ac-440e-9447-3914782c6fe5",
+      "notes": "GET = تحقق Meta (مرة واحدة عند تسجيل الويبهوك). POST = كل الرسايل والـ statuses.\n🔧 غيّر الـ Path لاسم خاص بيك. رابط الويبهوك هيبقى: https://<n8n-domain>/webhook/<Path>",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.query['hub.mode'] }}",
+              "rightValue": "subscribe",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.query['hub.verify_token'] }}",
+              "rightValue": "CHANGE_ME_VERIFY_TOKEN",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check Verify Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        144
+      ],
+      "id": "0538c7f5-bb19-469d-b9f1-8fe287afbe03",
+      "notes": "🔧 غيّر CHANGE_ME_VERIFY_TOKEN لكلمة سر من عندك. نفس الكلمة بالظبط تتحط في Meta → App → WhatsApp → Configuration → Verify token.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('Webhook').item.json.query['hub.challenge'] }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Return Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        48
+      ],
+      "id": "a056f9ae-acab-4926-91b1-0d7754bb599e",
+      "notes": "بيرجّع hub.challenge كما هو (نص، كود 200). لو رجّعت JSON Meta هترفض.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "name": "Reject",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        240
+      ],
+      "id": "5b7ec49b-3977-43ba-b298-dc2a418c09a9",
+      "notes": "Verify token غلط → 403 من غير body.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Ack Message",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -32,
+        576
+      ],
+      "id": "21c6440b-4a58-4cba-ac29-8ae8188f2416",
+      "notes": "لازم نرد 200 فورًا قبل أي معالجة. لو اتأخرنا Meta تعيد إرسال نفس الرسالة (لحد 36 ساعة).",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $('Webhook').first().json.body?.entry?.[0]?.changes?.[0]?.value;\nif (!value?.messages?.length) return [];\n\nconst contacts = value.contacts ?? [];\nconst isBsuid = v => /^[A-Z]{2}\\./.test(v ?? '');   // BSUID looks like EG.1139891858712101\nconst MEDIA = ['image', 'audio', 'video', 'document', 'sticker'];\n\n// Meta can batch several messages in one webhook → one item per message\nreturn value.messages.map(msg => {\n  const contact = contacts.find(c => c.wa_id === msg.from || (c.user_id && c.user_id === msg.from_user_id)) ?? contacts[0];\n\n  const phone   = !isBsuid(msg.from) ? msg.from : (!isBsuid(contact?.wa_id) ? contact?.wa_id : null) ?? null;\n  const user_id = msg.from_user_id ?? contact?.user_id ?? (isBsuid(msg.from) ? msg.from : null);\n\n  const media = MEDIA.includes(msg.type) ? msg[msg.type] : null;\n  const loc   = msg.type === 'location' ? msg.location : null;\n\n  // what the user actually wrote (text body or media caption)\n  const content = msg.type === 'text' ? (msg.text?.body ?? null) : (media?.caption ?? null);\n\n  // type-specific extras → payload (jsonb)\n  let payload = null;\n  if (loc) payload = { latitude: loc.latitude, longitude: loc.longitude, name: loc.name ?? null, address: loc.address ?? null, maps_link: `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}` };\n  if (msg.type === 'reaction') payload = { emoji: msg.reaction?.emoji ?? null, reacted_to: msg.reaction?.message_id ?? null };\n  if (msg.type === 'contacts') payload = { contacts: msg.contacts };\n  if (msg.type === 'audio') payload = { voice: msg.audio?.voice ?? null };\n\n  return { json: {\n    phone_number_id: value.metadata.phone_number_id,\n    phone, user_id,\n    reply_to: phone ?? user_id,            // always reply to this\n    username: contact?.profile?.username ?? null,\n    name: contact?.profile?.name ?? contact?.profile?.username ?? '',\n    message_id: msg.id,\n    timestamp: Number(msg.timestamp),\n    type: msg.type,\n    content,\n    caption: media?.caption ?? null,\n    button_reply: msg.button?.payload ?? msg.interactive?.button_reply?.id ?? msg.interactive?.list_reply?.id ?? null,\n    button_title: msg.button?.text ?? msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title ?? null,\n    reply_to_message_id: msg.context?.id ?? null,\n    media_id: media?.id ?? null,\n    media_mime_type: media?.mime_type ?? null,\n    media_filename: media?.filename ?? null,\n    media_sha256: media?.sha256 ?? null,\n    payload,\n  } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        176
+      ],
+      "id": "ea2c95be-d01a-42e9-8d91-e488cdd0162d",
+      "name": "Parse Message",
+      "notes": "بيحوّل الويبهوك لصف لكل رسالة: phone / user_id (BSUID) / reply_to / type / content / button_reply / media_id / location... \nدايمًا رد على reply_to (phone ?? user_id) عشان المستخدمين اللي مخفيين رقمهم.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6a430d33-d1f8-43e8-aa1d-a68a57ac6cbe",
+                    "leftValue": "={{ $('Webhook').item.json.body.entry[0].changes[0].value.messages }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "array",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Message"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Webhook').item.json.body.entry[0].changes[0].value.statuses }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "array",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "id": "0762aaf8-3bb7-48de-ae55-7f7d969d861a"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Status"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        416,
+        576
+      ],
+      "id": "09bfc18f-00ff-4f57-9847-a10e89d027e4",
+      "name": "Event Type",
+      "notes": "messages → رسالة من مستخدم. statuses → تحديث حالة رسالة بعتناها إحنا.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $('Webhook').first().json.body?.entry?.[0]?.changes?.[0]?.value;\nconst statuses = value?.statuses ?? [];\nconst contacts = value?.contacts ?? [];\n\n// Meta can send several statuses in one webhook → one item per status\nreturn statuses.map(s => {\n  const contact = contacts.find(c => c.user_id === s.recipient_user_id) ?? contacts[0];\n\n  return {\n    json: {\n      wamid: s.id,\n      status: s.status,                 // sent | delivered | read | failed\n      timestamp: Number(s.timestamp),\n      recipient: s.recipient_id,        // phone (or BSUID if phone is hidden)\n      user_id: s.recipient_user_id ?? contact?.user_id ?? null,   // BSUID\n      username: contact?.profile?.username ?? null,\n      error: s.errors?.[0]\n        ? `${s.errors[0].code}: ${s.errors[0].title}${s.errors[0].error_data?.details ? ' — ' + s.errors[0].error_data.details : ''}`\n        : null,\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        592
+      ],
+      "id": "419f6115-a9e8-4fd7-8ce5-70a8ac3f4393",
+      "name": "Parse Status",
+      "notes": "صف لكل status: wamid + sent/delivered/read/failed + وقت + سبب الفشل لو فيه.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.whatsapp_messages\nset status    = $2::text,\n    status_at = to_timestamp($4::bigint),\n    error     = case when $2::text = 'failed' then nullif($3, '') else error end,\n    user_id   = coalesce(user_id, nullif($5, ''))\nwhere wa_message_id = $1\n  and direction = 'outgoing'\n  and (\n    $2::text = 'failed'\n    or coalesce(array_position(array['sent','delivered','read'], status), 0)\n     < array_position(array['sent','delivered','read'], $2::text)\n  )\nreturning id, wa_message_id, status;",
+        "options": {
+          "queryReplacement": "={{ [ $json.wamid, $json.status, $json.error ?? '', $json.timestamp, $json.user_id ?? '' ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        912,
+        592
+      ],
+      "id": "892418f7-707f-40e7-b28b-c0507413d6fa",
+      "name": "Update WhatsApp Status",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "name": "🔧 Postgres (your DB)"
+        }
+      },
+      "notes": "بيحدّث حالة الرسايل الصادرة (اللي انت سجلتها بنفسك بعد الإرسال). sent → delivered → read ومبيرجعش ورا، failed بيغلب أي حالة.\n🔧 Credential: Postgres بتاعك.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.whatsapp_messages\n  (wa_message_id, phone, user_id, direction, message_type, content,\n   button_reply, button_title, raw)\nvalues (\n  $1, nullif($2, ''), nullif($3, ''), 'incoming', $4, nullif($5, ''),\n  nullif($6, ''), nullif($7, ''), $8::jsonb\n)\non conflict (wa_message_id) do nothing\nreturning id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.message_id, $json.phone ?? '', $json.user_id ?? '', $json.type, $json.content ?? '', $json.button_reply ?? '', $json.button_title ?? '', JSON.stringify($('Webhook').first().json.body) ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        928,
+        176
+      ],
+      "id": "f42b4669-d4c3-41e8-8fa0-5b2a2fad7407",
+      "name": "Log Incoming Message",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "name": "🔧 Postgres (your DB)"
+        }
+      },
+      "notes": "بيسجّل كل رسالة واردة في whatsapp_messages. on conflict do nothing = لو Meta بعتت نفس الرسالة مرتين، مرة واحدة بس تتسجل. $1,$2.. = queryReplacement (مفيش string concatenation في SQL أبدًا).\n🔧 Credential: Postgres بتاعك. الجدول لازم يكون موجود (SQL مرفق مع الورك فلو).",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg1",
+              "name": "graph_version",
+              "type": "string",
+              "value": "v26.0"
+            },
+            {
+              "id": "cfg2",
+              "name": "phone_number_id",
+              "type": "string",
+              "value": "={{ $('Webhook').first().json.body.entry[0].changes[0].value.metadata.phone_number_id }}"
+            },
+            {
+              "id": "cfg3",
+              "name": "supabase_url",
+              "type": "string",
+              "value": "https://YOUR-PROJECT.supabase.co"
+            },
+            {
+              "id": "cfg4",
+              "name": "media_bucket",
+              "type": "string",
+              "value": "whatsapp-media"
+            },
+            {
+              "id": "cfg5",
+              "name": "ai_model",
+              "type": "string",
+              "value": "google/gemini-2.5-flash"
+            },
+            {
+              "id": "cfg6",
+              "name": "transcribe_model",
+              "type": "string",
+              "value": "openai/whisper-1"
+            },
+            {
+              "id": "cfg7",
+              "name": "system_prompt",
+              "type": "string",
+              "value": "انت مساعد واتساب لشركة [اسم الشركة]. رد بالعامية المصرية، بشكل ودود ومختصر (من سطر لـ 4 سطور). لو مش عارف حاجة قول كده بصراحة ومتألّفش معلومات."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "56abc85c-ec5e-4a2b-a915-aee33781029d",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        576
+      ],
+      "notes": "كل الإعدادات في مكان واحد. phone_number_id بيتقري من الويبهوك نفسه (مش مكتوب يدوي) فالورك فلو يشتغل مع أي رقم تحت نفس الـ App.\n🔧 غيّر supabase_url و system_prompt. graph_version لازم تبقى نفسها في كل النودز (v26.0).",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "new1",
+              "leftValue": "={{ !!$json.id }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "id": "fda4a05c-61f7-48e7-9611-69b31e668cf6",
+      "name": "Is New Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1152,
+        176
+      ],
+      "notes": "لو Meta بعتت نفس الرسالة تاني، on conflict مش بيرجّع id ← نقف هنا عشان منردش مرتين"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Config').first().json.graph_version }}/{{ $('Config').first().json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: $('Parse Message').item.json.message_id, typing_indicator: { type: 'text' } }) }}",
+        "options": {}
+      },
+      "id": "9a54114a-5d1b-432d-85c1-1bf23faf7765",
+      "name": "Mark as Read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1376,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "🔧 WhatsApp Cloud API (Header Auth)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "🔧 Credential: Header Auth → Name: Authorization / Value: Bearer <TOKEN>. التوكن يتحط في الـ credential بس، مش في النود.\nبيعمل ✓✓ زرقاء + مؤشر الكتابة. onError = continue عشان لو فشل الورك فلو يكمل.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt1",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "text"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt2",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(image|audio|video|document|sticker)$"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Media"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt3",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "location"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Location"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt4",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(button|interactive)$"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Button"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt5",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(reaction|system)$"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Silent"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unsupported"
+        }
+      },
+      "id": "8e7574c0-58af-49cb-b7fd-12afb0694b54",
+      "name": "Message Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        96
+      ],
+      "notes": "من هنا تبني الردود بتاعتك: Text / Media / Location / Button / Silent / Unsupported. كل فرع فاضي دلوقتي عن قصد.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Return Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ack Message": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message": {
+      "main": [
+        [
+          {
+            "node": "Log Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Type": {
+      "main": [
+        [
+          {
+            "node": "Parse Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Status": {
+      "main": [
+        [
+          {
+            "node": "Update WhatsApp Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Is New Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Message?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Read": {
+      "main": [
+        [
+          {
+            "node": "Message Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook": [
+      {
+        "headers": {
+          "content-type": "application/json",
+          "user-agent": "facebookexternalua"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "object": "whatsapp_business_account",
+          "entry": [
+            {
+              "id": "100000000000001",
+              "changes": [
+                {
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {
+                      "display_phone_number": "201000000001",
+                      "phone_number_id": "100000000000002"
+                    },
+                    "contacts": [
+                      {
+                        "profile": {
+                          "name": "أحمد",
+                          "username": "ahmed"
+                        },
+                        "wa_id": "201000000002",
+                        "user_id": "EG.1000000000000003"
+                      }
+                    ],
+                    "messages": [
+                      {
+                        "from": "201000000002",
+                        "from_user_id": "EG.1000000000000003",
+                        "id": "wamid.SAMPLE_REPLACE_ME",
+                        "timestamp": "1760000000",
+                        "text": {
+                          "body": "السلام عليكم"
+                        },
+                        "type": "text"
+                      }
+                    ]
+                  },
+                  "field": "messages"
+                }
+              ]
+            }
+          ]
+        },
+        "webhookUrl": "https://YOUR-N8N-DOMAIN/webhook/whatsapp-inbound",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "nodeGroups": [
+    {
+      "id": "16dd6925-764a-449b-b2cc-e2e250e9005d",
+      "nodeIds": [
+        "419f6115-a9e8-4fd7-8ce5-70a8ac3f4393",
+        "892418f7-707f-40e7-b28b-c0507413d6fa"
+      ],
+      "name": "2. Status Updates"
+    },
+    {
+      "id": "64363c88-4213-4603-a986-99a21548d2c1",
+      "nodeIds": [
+        "ea2c95be-d01a-42e9-8d91-e488cdd0162d",
+        "f42b4669-d4c3-41e8-8fa0-5b2a2fad7407",
+        "fda4a05c-61f7-48e7-9611-69b31e668cf6",
+        "9a54114a-5d1b-432d-85c1-1bf23faf7765",
+        "8e7574c0-58af-49cb-b7fd-12afb0694b54"
+      ],
+      "name": "3. Incoming Message"
+    },
+    {
+      "id": "29239c7f-6764-40ae-9d19-6a56a33a0c81",
+      "nodeIds": [
+        "0538c7f5-bb19-469d-b9f1-8fe287afbe03",
+        "a056f9ae-acab-4926-91b1-0d7754bb599e",
+        "5b7ec49b-3977-43ba-b298-dc2a418c09a9"
+      ],
+      "name": "1. Verify & Config"
+    },
+    {
+      "id": "f23155e9-b56a-4740-b875-ba932dbebd41",
+      "nodeIds": [
+        "21c6440b-4a58-4cba-ac29-8ae8188f2416",
+        "56abc85c-ec5e-4a2b-a915-aee33781029d",
+        "09bfc18f-00ff-4f57-9847-a10e89d027e4"
+      ],
+      "name": "1b. Ack & Config"
+    }
+  ],
+  "name": "WA Meta Direct — Inbound Starter"
+}
