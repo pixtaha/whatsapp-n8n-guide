@@ -94,9 +94,12 @@ curl "https://graph.facebook.com/v26.0/%WABA_ID%/phone_numbers" -H "Authorizatio
 
 1. App → **Use cases** → **Connect on WhatsApp** → **Customize**
 2. **Step 2. Production setup** (⚠️ not Step 1)
-3. **Add phone number** → display name, category → country + number → **Text message** → enter code
+3. **Add phone number** → choose your **existing WhatsApp account** (⚠️ not "Create new": that makes a second account) → display name, category → country + number → **Text message** → enter code
 4. Copy the number's ID → `PHONE_NUMBER_ID` (Step 1)
 5. **Subscribe webhooks** ON → **Register** → choose PIN → set `PIN` (Step 1)
+
+❌ `linked to a business portfolio` / cannot add → limit is **2 numbers per business** before verification. Business Settings → WhatsApp accounts → delete the old number first
+❌ `already in use on WhatsApp` → the number is still on the WhatsApp / Business app. In the app: Settings → Account → Delete my account, then retry (can take days)
 
 **Register from terminal (if the button fails):**
 
@@ -133,18 +136,29 @@ curl -X POST "https://graph.facebook.com/v26.0/%WABA_ID%/subscribed_apps" -H "Au
 
 ---
 
-## 7. n8n workflow
+## 7. Database table
 
-1. **Webhook node**: GET + POST, Path = `WEBHOOK_PATH`, Respond = Using 'Respond to Webhook' Node
-2. **GET** → **IF node**: `{{ $json.query['hub.verify_token'] }}` equals `VERIFY_TOKEN`
-   - true → **Respond to Webhook node**: Text `{{ $('Webhook').item.json.query['hub.challenge'] }}`, code 200
-   - false → **Respond to Webhook node**: No data, code 403
-3. **POST** → **Respond to Webhook node**: No data, code 200
+Supabase → **SQL Editor** → New query → paste `supabase_whatsapp_messages_table.sql` → **Run**.
+
+✅ `Success. No rows returned` → Table Editor shows `whatsapp_messages`
+
+---
+
+## 8. n8n workflow
+
+1. n8n → **Create workflow** → `...` → **Import from file** → `n8n_whatsapp_inbound_starter.json`
+2. Follow the 7 numbered sticky notes on the canvas:
+   - **Webhook node** → Path = `WEBHOOK_PATH`
+   - **Check Verify Token** (IF node) → `CHANGE_ME_VERIFY_TOKEN` = `VERIFY_TOKEN`
+   - **Mark as Read** (HTTP Request node) → Header Auth credential: Name `Authorization`, Value `Bearer <TOKEN>`
+   - **Log Incoming Message** + **Update WhatsApp Status** (Postgres node) → your Supabase credential
+   - **Config** (Set node) → `supabase_url`, `system_prompt`
+3. Unpin the sample data on **Webhook node**
 4. **Publish**
 
 ---
 
-## 8. Test n8n
+## 9. Test n8n
 
 🍎
 ```bash
@@ -170,7 +184,7 @@ curl -i "https://%DOMAIN%/webhook/%WEBHOOK_PATH%?hub.mode=subscribe&hub.verify_t
 
 ---
 
-## 9. Register webhook with Meta
+## 10. Register webhook with Meta
 
 🍎
 ```bash
@@ -198,8 +212,27 @@ curl "https://graph.facebook.com/v26.0/%APP_ID%/subscriptions?access_token=%APP_
 
 ---
 
-## 10. Live test
+## 11. Live test
 
-Send a WhatsApp message to your number → new execution in n8n **Executions**.
+From your personal WhatsApp, send `hello` to the business number.
 
-Nothing? → App not **Published**, or workflow not **Published**.
+**Check 1: n8n** → Executions → a new green execution within ~2 seconds
+- Open it → **Webhook node** output → `body.entry[0].changes[0].value.messages[0].text.body` = `hello`
+- **Parse Message** output → `phone`, `user_id`, `reply_to`, `type: text`
+- **Log Incoming Message** output → `id: 1`
+
+**Check 2: Supabase** → Table Editor → `whatsapp_messages` → 1 row, `direction = incoming`, `content = hello`
+
+**Check 3: your phone** → blue double ticks ✓✓ on your message (Mark as Read worked)
+
+Send the same message again → new execution, but **Log Incoming Message** stops at **Is New Message?** (no second row).
+
+| Result | Fix |
+| --- | --- |
+| No execution at all | Workflow not **Published** · Step 6 skipped (`subscribed_apps`) · Step 10 `active: false` · App not **Published** |
+| Execution red at **Log Incoming Message** | Wrong Postgres credential, or Step 7 SQL not run |
+| Execution red at **Mark as Read** | Header Auth credential: `Bearer <TOKEN>` with a space, token has `whatsapp_business_messaging` |
+| Row saved but no ✓✓ | Same as above; row is fine, only the read receipt failed |
+| Execution green, `messages` missing | A status event, not a message: normal, check **Event Type** → Status branch |
+
+✅ All 3 checks pass → inbound is done. Next: build replies after **Message Type** (HTTP Request node → `/messages`, then Postgres node to log `direction = outgoing`).
