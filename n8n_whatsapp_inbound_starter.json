@@ -1,12 +1,12 @@
 {
-  "name": "WA Meta Direct — Inbound Starter",
+  "name": "WA Meta Direct - Inbound Starter",
   "nodes": [
     {
       "parameters": {
         "content": "## Before you run: change these 5 things\n\n1. **Webhook** → Path: pick your own name.\n2. **Check Verify Token** → replace `CHANGE_ME_VERIFY_TOKEN` with your own secret, and put the SAME value in Meta → Webhooks.\n3. **Mark as Read** → Credential: Header Auth (`Authorization: Bearer <TOKEN>`).\n4. **Log Incoming Message** + **Update WhatsApp Status** → Credential: your Postgres. Run the table SQL first.\n5. **Config** → `supabase_url` and `system_prompt`.\n\n**Then:** Publish → test GET with curl → register the webhook in Meta (fields: messages) → send a message.\n\nWarning: the pinData on Webhook is FAKE sample data for teaching. Unpin it before production.\nNever put a token / App Secret / PIN inside any node.",
         "height": 520,
         "width": 560,
-        "color": 4
+        "color": 5
       },
       "name": "Setup Checklist",
       "type": "n8n-nodes-base.stickyNote",
@@ -22,7 +22,7 @@
         "content": "## How this workflow works\n\n**GET** (once): Meta sends verify_token + challenge → if the token matches we echo the challenge back.\n\n**POST** (every event): respond 200 immediately → Config → Event Type:\n- **messages** → Parse → Log to DB → if new → Mark as Read → Message Type → (your replies)\n- **statuses** → Parse → Update status of an outgoing message\n\nNote: messages YOU send never arrive on the webhook. Log them yourself after every send (direction = outgoing, wa_message_id from the API response).",
         "height": 420,
         "width": 560,
-        "color": 6
+        "color": 5
       },
       "name": "How it works",
       "type": "n8n-nodes-base.stickyNote",
@@ -38,7 +38,7 @@
         "content": "### 1) Webhook\n**Change the Path** to your own name.\nThe URL you give to Meta:\n`https://<n8n-domain>/webhook/<Path>`\nGET + POST must both be enabled.",
         "height": 190,
         "width": 300,
-        "color": 3
+        "color": 5
       },
       "name": "1 Webhook",
       "type": "n8n-nodes-base.stickyNote",
@@ -54,7 +54,7 @@
         "content": "### 2) Verify Token\nReplace `CHANGE_ME_VERIFY_TOKEN` with your own secret.\nPut **exactly the same value** in:\nMeta App → WhatsApp → Configuration → Verify token",
         "height": 180,
         "width": 300,
-        "color": 3
+        "color": 5
       },
       "name": "2 Verify Token",
       "type": "n8n-nodes-base.stickyNote",
@@ -70,7 +70,7 @@
         "content": "### 3) Config\nChange `supabase_url` and `system_prompt`.\nLeave `phone_number_id`: it is read from the webhook automatically.\nKeep one `graph_version` across the whole workflow.",
         "height": 202,
         "width": 300,
-        "color": 3
+        "color": 5
       },
       "name": "3 Config",
       "type": "n8n-nodes-base.stickyNote",
@@ -86,7 +86,7 @@
         "content": "### 4) Postgres Credential\nSelect your database credential.\nRun `supabase_whatsapp_messages_table.sql` in Supabase SQL Editor **before** the first message.",
         "height": 206,
         "width": 260,
-        "color": 3
+        "color": 5
       },
       "name": "4 Postgres (incoming)",
       "type": "n8n-nodes-base.stickyNote",
@@ -102,7 +102,7 @@
         "content": "### 5) WhatsApp Credential\nHeader Auth:\n- Name: `Authorization`\n- Value: `Bearer <TOKEN>`\nThe token lives in the credential only. **Never in the node.**",
         "height": 200,
         "width": 260,
-        "color": 3
+        "color": 5
       },
       "name": "5 WhatsApp Credential",
       "type": "n8n-nodes-base.stickyNote",
@@ -117,7 +117,7 @@
       "parameters": {
         "content": "### 6) Postgres Credential\nSame credential as #4.\nUpdates the status of **outgoing** messages only (the ones you logged after sending).",
         "width": 280,
-        "color": 3
+        "color": 5
       },
       "name": "6 Postgres (status)",
       "type": "n8n-nodes-base.stickyNote",
@@ -530,6 +530,12 @@
         640
       ],
       "notesInFlow": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yrLtONuopss9PATw",
+          "name": "Efada Whatsapp"
+        }
+      },
       "onError": "continueRegularOutput",
       "notes": "Credential: Header Auth → Name: Authorization / Value: Bearer <TOKEN>. Token lives in the credential only, never in the node.\nSends blue double ticks + typing indicator. onError = continue so a failure here never blocks the reply."
     },
@@ -873,7 +879,7 @@
     "binaryMode": "separate",
     "availableInMCP": true
   },
-  "versionId": "a87a25c2-1859-432d-812b-d6fdf67d20e0",
+  "versionId": "216b0300-5364-4562-862f-b2493d8c567c",
   "meta": {
     "instanceId": "5c01d0ec25157ecd44c71e4414998fba07558f97fca7a48283ace6e1b2322586"
   },
