@@ -1,5 +1,13 @@
 # WhatsApp Cloud API + n8n: Quick Start
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=QaziTSN98rY">
+    <img src="https://img.youtube.com/vi/QaziTSN98rY/maxresdefault.jpg" width="720" alt="Watch the full setup video on YouTube">
+  </a>
+  <br>
+  <b>▶️ Watch the full setup video on YouTube (12 min)</b>
+</p>
+
 🍎 **Mac** → open **Terminal**
 🪟 **Windows** → open **CMD** (not PowerShell)
 
