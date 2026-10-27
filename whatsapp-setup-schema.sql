@@ -1,5 +1,5 @@
 -- =====================================================================
--- WhatsApp Inbox — full Supabase setup
+-- WhatsApp Inbox — full Supabase setup                     schema v1.1.0
 --   Tables : configurations, dashboard_agents, whatsapp_contacts, whatsapp_messages
 --   Storage: private bucket "whatsapp-media" + access policies
 --   Extras : auto contact list (triggers), status timestamps, Realtime, RLS
@@ -7,14 +7,26 @@
 -- How to run:
 --   1) Set the schema name ONCE at the top (v_schema). Default: whatsapp
 --   2) Supabase → SQL Editor → New query → paste this whole file → Run
---   3) Custom schema + dashboard: Project Settings → API → Exposed schemas
---      → add the schema, or the dashboard (supabase-js) can't see the tables.
+--   3) Expose the schema for the dashboard (supabase-js), or it can't see the tables.
 --      n8n (Postgres node) does not need this.
+--        Supabase Cloud : Project Settings → Data API → Exposed schemas → add it
+--        Self-hosted    : in .env add it to PGRST_DB_SCHEMAS
+--                         (e.g. PGRST_DB_SCHEMAS=public,storage,graphql_public,whatsapp)
+--                         then: docker compose up -d rest
 --   Run it once per environment (dev / demo / production = separate projects).
 --
 -- Safe to re-run: everything uses IF NOT EXISTS / CREATE OR REPLACE /
 -- DROP POLICY IF EXISTS. Running it on an older whatsapp_messages table
 -- adds the missing columns and links old messages to contacts.
+--
+-- What changed in v1.1.0:
+--   - status "played" (voice note played by the user) + played_at column
+--   - statuses never go back (a late "delivered" can't overwrite "read");
+--     "failed" always wins; "read" without "delivered" fills delivered_at
+--   - reactions and system messages no longer change the chat list
+--     (unread count, preview, 24h window); they are still logged
+--   - whatsapp_schema_version() → the dashboard checks compatibility
+--   - message index includes id (stable "load older messages" paging)
 --
 -- Who can do what:
 --   n8n (Postgres node, user "postgres")     → everything (owner, bypasses RLS)
@@ -42,6 +54,8 @@ end $$;
 -- 0) App configuration (settings + secrets read by n8n "Load Config")
 --    Server-only: RLS on, no policies, no grants → anon / authenticated
 --    can't read it. Only the Postgres connection (n8n) can.
+--    ⚠️ Anyone with the Postgres password, and every database backup,
+--    can read these secrets. Treat backups as secret.
 -- =====================================================================
 create table if not exists configurations (
   id            serial primary key,
@@ -81,7 +95,7 @@ values
   ('production', 'media_bucket',     'whatsapp-media',          false, 'اسم الـ bucket لملفات الواتساب'),
   ('production', 'ai_model',         'google/gemini-2.5-flash', false, 'موديل الرد'),
   ('production', 'transcribe_model', 'openai/whisper-1',        false, 'موديل تحويل الصوت لنص'),
-  ('production', 'system_prompt',    'انت مساعد واتساب لـ Pixtaha Tech. رد بالعامية المصرية، بشكل ودود ومختصر (من سطر لـ 4 سطور). لو مش عارف حاجة قول كده بصراحة ومتألّفش معلومات.', false, 'تعليمات البوت'),
+  ('production', 'system_prompt',    'انت مساعد واتساب للنشاط ده. رد بالعامية المصرية، بشكل ودود ومختصر (من سطر لـ 4 سطور). لو مش عارف حاجة قول كده بصراحة ومتألّفش معلومات، واعرض تحويل العميل لموظف.', false, 'تعليمات البوت — غيّرها لاسم ونشاط العميل'),
   ('production', 'whatsapp_access_token',     'CHANGE_ME', true, 'Meta System User permanent token'),
   ('production', 'whatsapp_app_secret',       'CHANGE_ME', true, 'للتحقق من x-hub-signature-256'),
   ('production', 'whatsapp_verify_token',     'CHANGE_ME', true, 'لتأكيد الـ Webhook مع Meta'),
@@ -167,7 +181,7 @@ alter table whatsapp_messages
   add column if not exists phone                  text null,
   add column if not exists user_id                text null,            -- BSUID
   -- content
-  add column if not exists message_type           text null,            -- text, image, audio, video, document, sticker, location, interactive, button, reaction, template...
+  add column if not exists message_type           text null,            -- text, image, audio, video, document, sticker, location, interactive, button, reaction, template, unsupported, system...
   add column if not exists content                text null,            -- real text / caption
   add column if not exists message_label          text null,            -- outgoing: our reply type
   add column if not exists button_reply           text null,            -- incoming: button id
@@ -185,6 +199,7 @@ alter table whatsapp_messages
   add column if not exists sent_at                timestamptz null,
   add column if not exists delivered_at           timestamptz null,
   add column if not exists read_at                timestamptz null,
+  add column if not exists played_at              timestamptz null,     -- voice note played (v1.1.0)
   add column if not exists failed_at              timestamptz null,
   add column if not exists error                  text null,
   -- media
@@ -203,12 +218,15 @@ declare
   c record;
   v_reg regclass;
 begin
+  -- v1.1.0: the status list changed (+ played) → drop the old check so the loop re-adds it
+  alter table whatsapp_messages drop constraint if exists whatsapp_messages_status_check;
+
   for c in
     select * from (values
       ('whatsapp_messages_direction_check',
        'check (direction in (''incoming'', ''outgoing''))'),
       ('whatsapp_messages_status_check',
-       'check (status is null or status in (''sent'', ''delivered'', ''read'', ''failed''))'),
+       'check (status is null or status in (''sent'', ''delivered'', ''read'', ''played'', ''failed''))'),
       ('whatsapp_messages_status_outgoing_only',
        'check (status is null or direction = ''outgoing'')'),
       ('whatsapp_messages_phone_or_user',
@@ -261,8 +279,11 @@ end $$;
 -- =====================================================================
 -- 4) Indexes
 -- =====================================================================
-create index if not exists whatsapp_messages_contact_created_idx
-  on whatsapp_messages (contact_id, created_at desc);
+-- v1.1.0: chat history paging uses (created_at, id) so two messages with the
+-- same time are never skipped or shown twice → replaces the old index
+drop index if exists whatsapp_messages_contact_created_idx;
+create index if not exists whatsapp_messages_contact_created_id_idx
+  on whatsapp_messages (contact_id, created_at desc, id desc);
 create index if not exists whatsapp_messages_phone_idx
   on whatsapp_messages (phone);
 create index if not exists whatsapp_messages_user_id_idx
@@ -286,6 +307,16 @@ create index if not exists whatsapp_contacts_assigned_idx
 -- =====================================================================
 -- 5) Helper functions
 -- =====================================================================
+
+-- schema version: the dashboard calls it after login to check compatibility
+create or replace function whatsapp_schema_version()
+returns text
+language sql
+immutable
+set search_path from current
+as $$
+  select '1.1.0'::text;
+$$;
 
 -- file extension from a MIME type ("audio/ogg; codecs=opus" → ogg)
 create or replace function whatsapp_media_extension(p_mime text)
@@ -365,14 +396,15 @@ as $$
     nullif(trim(p_content), ''),
     nullif(trim(p_button_title), ''),
     case p_message_type
-      when 'image'    then '📷 صورة'
-      when 'video'    then '🎥 فيديو'
-      when 'audio'    then '🎤 رسالة صوتية'
-      when 'document' then '📄 ' || coalesce(p_filename, 'مستند')
-      when 'sticker'  then '🏷️ ملصق'
-      when 'location' then '📍 موقع'
-      when 'contacts' then '👤 جهة اتصال'
-      when 'reaction' then 'تفاعل ' || coalesce(p_payload ->> 'emoji', '')
+      when 'image'       then '📷 صورة'
+      when 'video'       then '🎥 فيديو'
+      when 'audio'       then '🎤 رسالة صوتية'
+      when 'document'    then '📄 ' || coalesce(p_filename, 'مستند')
+      when 'sticker'     then '🏷️ ملصق'
+      when 'location'    then '📍 موقع'
+      when 'contacts'    then '👤 جهة اتصال'
+      when 'reaction'    then 'تفاعل ' || coalesce(p_payload ->> 'emoji', '')
+      when 'unsupported' then '⚠️ رسالة غير مدعومة'
       else p_message_type
     end
   ), 120);
@@ -471,6 +503,9 @@ $$;
 
 -- BEFORE INSERT: link the message to its contact (creates the contact if new).
 -- Never blocks logging: any problem here only leaves contact_id empty.
+-- Name / username are read from raw → entry[0].changes[0].value.contacts.
+-- If one webhook carries several messages, store per message a raw that has
+-- the same shape but only that message and its contact (done in n8n Code node).
 create or replace function whatsapp_messages_before_insert()
 returns trigger
 language plpgsql
@@ -508,7 +543,10 @@ end;
 $$;
 
 -- AFTER INSERT: update the chat list (runs only for real inserts,
--- so "on conflict do nothing" duplicates don't add unread messages)
+-- so "on conflict do nothing" duplicates don't add unread messages).
+-- v1.1.0: reactions and system messages are logged but do NOT touch the
+-- chat list: no unread +1, no preview change, no 24h window change.
+-- (The dashboard shows a reaction on the message in context_wa_message_id.)
 create or replace function whatsapp_messages_after_insert()
 returns trigger
 language plpgsql
@@ -518,7 +556,8 @@ as $$
 declare
   v_at timestamptz := coalesce(new.wa_timestamp, new.created_at, now());
 begin
-  if new.contact_id is null then
+  if new.contact_id is null
+     or new.message_type in ('reaction', 'system') then
     return null;
   end if;
 
@@ -545,24 +584,51 @@ begin
 end;
 $$;
 
--- BEFORE UPDATE OF status: keep one timestamp per status (for ✓ ✓✓ blue ✓✓)
+-- BEFORE UPDATE OF status: statuses only move forward and keep one
+-- timestamp each (for ✓ ✓✓ blue ✓✓ and played).
+--   order: sent(1) → delivered(2) → read(3) → played(4); failed(9) always wins
+--   Meta does not promise order: a late "delivered" after "read" is ignored.
+--   "read" / "played" without the earlier steps fill those timestamps too.
 create or replace function whatsapp_messages_status_times()
 returns trigger
 language plpgsql
 set search_path from current
 as $$
 declare
-  v_at timestamptz := coalesce(new.status_at, now());
+  v_at  timestamptz := coalesce(new.status_at, now());
+  v_old int := case old.status when 'sent' then 1 when 'delivered' then 2
+                 when 'read' then 3 when 'played' then 4 when 'failed' then 9 else 0 end;
+  v_new int := case new.status when 'sent' then 1 when 'delivered' then 2
+                 when 'read' then 3 when 'played' then 4 when 'failed' then 9 else 0 end;
 begin
-  if new.status is distinct from old.status then
-    case new.status
-      when 'sent'      then new.sent_at      := coalesce(new.sent_at, v_at);
-      when 'delivered' then new.delivered_at := coalesce(new.delivered_at, v_at);
-      when 'read'      then new.read_at      := coalesce(new.read_at, v_at);
-      when 'failed'    then new.failed_at    := coalesce(new.failed_at, v_at);
-      else null;
-    end case;
+  if new.status is not distinct from old.status then
+    return new;
   end if;
+
+  -- an older status arrived late → keep the current one
+  if v_new < v_old then
+    new.status    := old.status;
+    new.status_at := old.status_at;
+    return new;
+  end if;
+
+  case new.status
+    when 'sent' then
+      new.sent_at      := coalesce(new.sent_at, v_at);
+    when 'delivered' then
+      new.delivered_at := coalesce(new.delivered_at, v_at);
+    when 'read' then
+      new.read_at      := coalesce(new.read_at, v_at);
+      new.delivered_at := coalesce(new.delivered_at, v_at);
+    when 'played' then
+      new.played_at    := coalesce(new.played_at, v_at);
+      new.read_at      := coalesce(new.read_at, v_at);
+      new.delivered_at := coalesce(new.delivered_at, v_at);
+    when 'failed' then
+      new.failed_at    := coalesce(new.failed_at, v_at);
+    else
+      null;
+  end case;
   return new;
 end;
 $$;
@@ -605,6 +671,7 @@ create trigger whatsapp_contacts_touch
 -- =====================================================================
 -- 7) Backfill: link existing messages to contacts (only rows not linked yet)
 --    Old messages count as read (unread_count stays 0).
+--    Reactions / system messages are linked but don't change the chat list.
 -- =====================================================================
 do $$
 declare
@@ -633,6 +700,8 @@ begin
       r.registration_id);
 
     update whatsapp_messages set contact_id = v_contact_id where id = r.id;
+
+    continue when r.message_type in ('reaction', 'system');
 
     update whatsapp_contacts c
     set last_message_at        = coalesce(r.wa_timestamp, r.created_at),
@@ -707,8 +776,8 @@ revoke execute on function
   set_updated_at()
   from public, anon, authenticated;
 
-revoke execute on function is_dashboard_agent() from public, anon;
-grant  execute on function is_dashboard_agent() to authenticated;
+revoke execute on function is_dashboard_agent(), whatsapp_schema_version() from public, anon;
+grant  execute on function is_dashboard_agent(), whatsapp_schema_version() to authenticated;
 
 -- =====================================================================
 -- 9) Realtime (new messages / chat list update live in the dashboard)
@@ -735,7 +804,8 @@ end $$;
 --   - public = false → direct links return an error; the dashboard uses
 --     short signed URLs (createSignedUrl).
 --   - file_size_limit = NULL → no bucket limit; the project's global limit
---     applies (Supabase Cloud Free: 50 MB; self-hosted / local: set in config).
+--     applies (Supabase Cloud Free: 50 MB; self-hosted: FILE_SIZE_LIMIT of the
+--     storage service in docker-compose.yml — set it to 104857600 = 100 MB).
 --     WhatsApp's largest file is 100 MB (documents).
 --   - allowed_mime_types = NULL on purpose: users can send any document type,
 --     and voice notes arrive as "audio/ogg; codecs=opus".
@@ -769,20 +839,24 @@ create policy "whatsapp media: agents upload outgoing" on storage.objects
 comment on table dashboard_agents  is 'People allowed to open the WhatsApp inbox. Add rows manually (see end of file).';
 comment on table whatsapp_contacts is 'One row per WhatsApp user. Filled automatically by triggers on whatsapp_messages.';
 comment on table whatsapp_messages is 'Every WhatsApp message in/out. One row per wamid. n8n inserts with on conflict do update (no-op) + returning (xmax = 0) as is_new, so retries still get storage_path.';
-comment on table configurations    is 'Settings + secrets for n8n. Server-only (RLS, no policies). Values CHANGE_ME must be replaced.';
+comment on table configurations    is 'Settings + secrets for n8n. Server-only (RLS, no policies). Values CHANGE_ME must be replaced. Backups contain these secrets.';
 
-comment on column whatsapp_contacts.last_inbound_at is 'Last message FROM the user. Free-form replies allowed for 24h after this; after that, templates only.';
-comment on column whatsapp_contacts.unread_count    is 'Incoming messages since the agent last opened the chat. Dashboard sets it to 0.';
+comment on function whatsapp_schema_version() is 'Schema version for the dashboard compatibility check. Bump it whenever this file changes.';
 
+comment on column whatsapp_contacts.last_inbound_at is 'Last message FROM the user (reactions / system not counted). Free-form replies allowed for 24h after this; after that, templates only.';
+comment on column whatsapp_contacts.unread_count    is 'Incoming messages (not reactions) since the agent last opened the chat. Dashboard sets it to 0.';
+
+comment on column whatsapp_messages.message_type   is 'text, image, audio, video, document, sticker, location, contacts, interactive, button, reaction, template, unsupported, system. reaction / system never change the chat list.';
 comment on column whatsapp_messages.content        is 'Real message text. incoming: user text. outgoing: body/caption we sent. NULL for button taps (see button_title).';
 comment on column whatsapp_messages.message_label  is 'Outgoing only. Our reply type, e.g. CONFIRMED_REPLY, UNREGISTERED_REPLY.';
 comment on column whatsapp_messages.button_reply   is 'Incoming only. Button / list reply id (e.g. CONFIRM).';
 comment on column whatsapp_messages.button_title   is 'Incoming only. Button / list text the user tapped.';
-comment on column whatsapp_messages.context_wa_message_id is 'wamid of the message this one replies to (context.id).';
+comment on column whatsapp_messages.context_wa_message_id is 'wamid of the message this one replies to (context.id). For reactions: the message that was reacted to.';
 comment on column whatsapp_messages.sent_by        is 'Outgoing only. bot | system | agent uuid.';
-comment on column whatsapp_messages.payload        is 'Type-specific data: location, contacts, reaction, buttons we sent.';
+comment on column whatsapp_messages.payload        is 'Type-specific data: location, contacts, reaction ({"emoji": ...}; no emoji = reaction removed), buttons we sent.';
 comment on column whatsapp_messages.wa_timestamp   is 'Message time at Meta (webhook timestamp). created_at = time we saved it.';
-comment on column whatsapp_messages.status         is 'Outgoing only: sent → delivered → read (never goes back). failed overrides.';
+comment on column whatsapp_messages.status         is 'Outgoing only: sent → delivered → read → played (never goes back, enforced by trigger). failed overrides.';
+comment on column whatsapp_messages.played_at      is 'First time the user played a voice note we sent (status played).';
 comment on column whatsapp_messages.wa_message_id  is 'wamid from Meta. NULL when the send call failed and returned no id.';
 comment on column whatsapp_messages.user_id        is 'BSUID. Always present on incoming; phone may be NULL for hidden numbers.';
 comment on column whatsapp_messages.media_id       is 'Meta media id. Incoming ids expire after 7 days; download before that.';
@@ -797,6 +871,10 @@ commit;
 -- Run these in a NEW query. Start it with the schema you chose, e.g.:
 --
 -- set search_path = whatsapp;
+--
+-- 0) Expose the schema for the dashboard:
+--    Cloud      : Project Settings → Data API → Exposed schemas → add "whatsapp" → Save
+--    Self-hosted: .env → PGRST_DB_SCHEMAS=...,whatsapp → docker compose up -d rest
 --
 -- 1) Add yourself as an agent (create the user first: Authentication → Users → Add user):
 --
@@ -818,14 +896,16 @@ commit;
 -- 3) Quick check:
 --
 -- select
---   (select count(*) from whatsapp_messages)                         as messages,
+--   whatsapp_schema_version()                                         as schema_version,   -- 1.1.0
+--   (select count(*) from whatsapp_messages)                          as messages,
 --   (select count(*) from whatsapp_messages where contact_id is null) as messages_without_contact,
 --   (select count(*) from whatsapp_contacts)                          as contacts,
---   (select public from storage.buckets where id = 'whatsapp-media')         as bucket_is_public;   -- must be false
+--   (select public from storage.buckets where id = 'whatsapp-media')  as bucket_is_public;   -- must be false
 --
 -- 4) Path for a new media file (use in a Postgres node):
 --
--- select whatsapp_media_path('incoming', $1, $2) as storage_path;   -- $1 = wamid, $2 = mime type
+-- select whatsapp_media_path('incoming', $1, $2, $3, $4) as storage_path;
+--   -- $1 = wamid, $2 = mime type, $3 = created_at, $4 = original filename
 --
 -- 5) Mark media that can no longer be downloaded (incoming ids expire after 7 days):
 --
