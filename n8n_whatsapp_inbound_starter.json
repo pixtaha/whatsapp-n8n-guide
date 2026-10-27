@@ -1,1 +1,1347 @@
 
+{
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📥 WhatsApp → Supabase (Inbox)\n\nThis workflow **receives** WhatsApp messages and **saves** them:\n- Every message → a row in Supabase\n- Images, voice notes and files → Supabase Storage\n\nIt does **not** reply. **Message Type** sorts the messages (text, media, button…). Connect your bot after it.\n\n### ⚙️ Setup (once)\n1. **Build the database:** run `whatsapp_supabase_setup.sql` in Supabase → SQL Editor.\n2. **Fill 2 settings** in the table `whatsapp.configurations`:\n   - `supabase_url` → your project link, e.g. `https://abc123.supabase.co`\n   - `whatsapp_verify_token` → a password you invent (you will give it to Meta in step 5)\n3. **Create 3 credentials** in n8n (see the 🔑 notes):\n   - 🔑 1 Postgres → to write in the database\n   - 🔑 2 Header Auth → your WhatsApp token, to talk to Meta\n   - 🔑 3 Supabase API → to save files in Storage\n4. **Change the Webhook Path** to a long random text. This is the address Meta sends messages to: hard to guess = safer.\n5. **Tell Meta** (Developer Console → WhatsApp → Configuration):\n   - Callback URL → the *Production URL* of the **Webhook** node\n   - Verify token → the same password from step 2\n   - Subscribe to `messages`\n6. **Activate** the workflow.\n\n### 🔐 Security\n- No secret inside this file: safe to share on GitHub.\n- Tokens live in n8n credentials (encrypted, never shown in executions).\n- Use a separate Supabase project, credentials and phone number for dev, demo and production.\n\n### 🔁 Rename the schema (optional)\nChange `v_schema` at the top of the SQL file, then Find & Replace `whatsapp.` (with the dot) in the 8 Postgres nodes.",
+        "height": 676,
+        "width": 860,
+        "color": 5
+      },
+      "id": "6705ca6a-7df9-48ed-980c-f4c250449a70",
+      "name": "README",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -6656,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ Not added yet: Meta signature check\n\nEvery real message from Meta comes with a **signature** (the header `x-hub-signature-256`). It is like a stamp that proves \"this really came from Meta\".\n\nThis workflow does **not check that stamp yet**. So anyone who finds your webhook URL can send fake messages to it.\n\n**Until it is added:** keep the Webhook **Path** long, random and private.\n\n**To add it later:** you need the `whatsapp_app_secret` (from Meta App → Settings → Basic) to recreate the stamp and compare it with the one Meta sent.",
+        "height": 204,
+        "width": 860,
+        "color": 5
+      },
+      "id": "e1cb8cd0-b0ee-493d-a159-9af1b409029c",
+      "name": "Security TODO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -6656,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1️⃣ The Webhook: 2 kinds of requests\n\nThe **Webhook** node receives two kinds of requests from Meta:\n\n### 🔐 GET: \"Is this really your webhook?\" (once, when you connect)\nMeta sends the verify token. We check it:\n1. **Load Verify Token** → reads your token from the table.\n2. **Check Verify Token** → does Meta's token match yours?\n   - ✅ Yes → **Return Challenge** (Meta says \"connected\")\n   - ❌ No → **Reject** (403)\n\n⚠️ Inside **Check Verify Token** you will see the text `CHANGE_ME`. **Leave it as it is.** It blocks the connection if you forgot to set a real token in the table.\n\n### 📨 POST: a new message or a status update (every time)\n1. **Ack Message** → tells Meta \"got it\" (200) **immediately**. If we answer slowly, Meta sends the same event again.\n2. **Load Config** → reads the settings from the table (no secrets).\n3. **Config** → puts all settings in one place. Any node can read them with `$('Config').first().json.<name>`.\n   If a setting is missing, it stops and tells you which one.\n4. **Event Type** → is it a new **message** or a **status** (sent / delivered / read)?\n\n💡 The phone number ID comes from Meta's request, not from the table. So one workflow can serve several WhatsApp numbers.",
+        "height": 452,
+        "width": 980,
+        "color": 5
+      },
+      "id": "c7fc3420-7e9b-4224-ac9c-8f82ded280ca",
+      "name": "Verify & Config",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -5680,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3️⃣ A new message arrived\n\n**What happens, in order:**\n1. **Parse Message** → turns Meta's long JSON into simple fields (`phone`, `text`, `type`…).\n   Meta can send several messages in one request, so you get **one item per message**.\n2. **Log Incoming Message** → saves the message in the database.\n3. **Is New Message?** → did we see this message before?\n   Meta sometimes sends the same message twice. If it's a repeat, we **stop here**, so the bot never replies twice.\n4. **Mark as Read** → shows blue ✓✓ and \"typing…\" to the user.\n5. **Message Type** → sorts the message:\n\n| Output | What arrives | Connected? |\n|---|---|---|\n| Text | normal text | ➕ your bot |\n| Media | image, voice, video, file, sticker | ✅ goes to step 5️⃣ |\n| Location | a shared location | ➕ your bot |\n| Button | a tapped button or list item | ➕ your bot |\n| Silent | reactions (👍) and system messages | usually nothing |\n| Unsupported | anything else | ➕ optional |\n\n👤 **Hidden numbers:** some users hide their phone number. Then Meta sends a user ID instead (looks like `EG.1234…`).\n➡️ **Always reply to `reply_to`.** It holds the phone number, or the user ID if the number is hidden.",
+        "height": 634,
+        "width": 764,
+        "color": 5
+      },
+      "id": "e43dc04b-e789-4cd5-8cf5-872b3bc52d8a",
+      "name": "Incoming Message",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3648,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 5️⃣ Save images, voice notes and files\n\nWhen a user sends media, Meta does **not** send the file itself. It sends a **media ID**. We use it to fetch the file and save it in our own Storage.\n\n**What happens, in order:**\n1. **Get Media URL** → asks Meta: \"where is this file?\" (uses 🔑 2)\n   ⏱️ The link works for **5 minutes only**, so we download right away.\n   The media ID itself works for **7 days**.\n2. **Download Media** → downloads the file (uses 🔑 2 again).\n3. **Media To Base64** → also turns the file into text, ready if you send it to an AI later.\n4. **Upload to Storage** → saves the file in the `whatsapp-media` bucket (uses 🔑 3).\n   The bucket is **private**: nobody can open the files without permission.\n5. The result is saved on the message:\n   - ✅ **Mark Media Stored** → saved, with its path\n   - ❌ **Mark Upload Failed** → not saved, with the reason in `media_error`. The workflow keeps going.\n6. **Media Kind** → Voice / Image / Other File. ➕ Connect your bot here (e.g. voice → speech-to-text).\n\n📁 **Where does the file go?** The database picks the path automatically, by direction, year and month:\n`incoming/2026/10/wamid…jpg`\n\n⚠️ Error `signature verification failed`? The Supabase key in 🔑 3 belongs to another project.",
+        "height": 448,
+        "width": 780,
+        "color": 5
+      },
+      "id": "e094c761-787e-4146-ae35-ab48957a6f92",
+      "name": "Media to Storage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2512,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2️⃣ Status of messages we sent\n\nWhen **we** send a message, Meta tells us what happened to it, step by step:\n\n| Status | Means | On the phone |\n|---|---|---|\n| `sent` | Left Meta's servers | ✓ |\n| `delivered` | Reached the user's phone | ✓✓ |\n| `read` | The user opened it | blue ✓✓ |\n| `failed` | Could not be delivered | ❗ |\n\n**How it works:**\n1. **Parse Status** → one item per status (Meta can send several at once).\n2. **Update WhatsApp Status** → saves the new status on the message.\n\n**Rules:**\n- A status **never goes back**. Meta doesn't always send them in order: if `read` arrives first and `delivered` comes later, it stays `read`.\n- `failed` always wins, and the reason is saved in `error`.\n- The time of each step (`sent_at`, `delivered_at`, `read_at`) is filled **automatically** by the database.",
+        "height": 508,
+        "width": 540,
+        "color": 5
+      },
+      "id": "6990568e-9266-479f-b89d-71db2f4b70fb",
+      "name": "Status Updates",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3648,
+        2528
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🗑️ Delete all data (manual only)\n\nThis part **empties everything** so you can start fresh (useful for testing).\nIt never runs by itself: only when you click **Run Manually**.\n\n**What it does, in order:**\n1. **Get Storage Object Paths** → lists every file in the media bucket.\n2. **Has Files?** → if the bucket is empty, skip to step 4.\n3. **Delete Storage Files** → deletes the files through the Storage API (uses 🔑 3).\n   Why not with SQL? SQL only removes the file's record. The file itself stays on the disk.\n4. **Wipe WhatsApp Tables** → deletes all messages and contacts, and restarts the counters at 1.\n\n**Not touched:** your settings (`configurations`) and the dashboard users (`dashboard_agents`).\n\n⚠️ **There is no undo.** Try it on a dev database first, never on production.",
+        "height": 300,
+        "width": 664,
+        "color": 5
+      },
+      "id": "b3191101-adee-43ed-a973-6ffb535e9d98",
+      "name": "Delete All Data",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -5664,
+        2464
+      ]
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "Change_me_with_your_path",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "dead190e-aeaa-4cfd-bab8-08560de214d8",
+      "name": "Webhook",
+      "webhookId": "837b138d-3787-4906-ad0b-0fe4aaf7d897",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -4624,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select config_value as verify_token\nfrom whatsapp.configurations\nwhere environment = 'production'\n  and config_key = 'whatsapp_verify_token';",
+        "options": {}
+      },
+      "id": "9ab9c38a-3aba-4da3-a151-c743f6c572f0",
+      "name": "Load Verify Token",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "alwaysOutputData": true,
+      "position": [
+        -4432,
+        1872
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "Reads the verify token from whatsapp.configurations\n🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('Webhook').first().json.query['hub.challenge'] }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "0b00e772-6153-4c5d-bcea-c1fd297db1b5",
+      "name": "Return Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -4048,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "5bb60957-3eee-45b0-87e2-9e852e37820f",
+      "name": "Reject",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -4048,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a4545546-ecb9-432f-a529-09b49ce4f8e3",
+      "name": "Ack Message",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -4432,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select json_object_agg(config_key, config_value) as cfg\nfrom whatsapp.configurations\nwhere environment = 'production'\n  and not is_secret;   -- secrets stay out of execution logs",
+        "options": {}
+      },
+      "id": "574884d1-627d-4230-a7b3-b12a25d08719",
+      "name": "Load Config",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -4240,
+        2240
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "Non-secret settings in one row as an object (is_secret = false only)\n🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Non-secret settings from whatsapp.configurations + per-request values from the webhook.\n// Secrets (tokens, keys) are NOT here: they live in n8n credentials.\nconst cfg = $input.first().json.cfg ?? {};\n\nconst REQUIRED = ['graph_version', 'supabase_url', 'media_bucket'];\nconst bad = REQUIRED.filter(k => !cfg[k] || cfg[k] === 'CHANGE_ME');\nif (bad.length) throw new Error(`Missing config in whatsapp.configurations: ${bad.join(', ')}`);\n\nconst value = $('Webhook').first().json.body?.entry?.[0]?.changes?.[0]?.value;\n\nreturn [{\n  json: {\n    ...cfg,\n    supabase_url: cfg.supabase_url.replace(/\\/+$/, ''),\n    phone_number_id: value?.metadata?.phone_number_id ?? null,\n  },\n  pairedItem: { item: 0 },\n}];"
+      },
+      "id": "ab95451b-d412-446d-9596-844ddd8e41cd",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4048,
+        2240
+      ],
+      "notes": "Every node reads settings with $('Config'). phone_number_id comes from the webhook, not the table"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6a430d33-d1f8-43e8-aa1d-a68a57ac6cbe",
+                    "leftValue": "={{ $('Webhook').first().json.body.entry[0].changes[0].value.messages }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "array",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Message"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Webhook').first().json.body.entry[0].changes[0].value.statuses }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "array",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "id": "0762aaf8-3bb7-48de-ae55-7f7d969d861a"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Status"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d53b7196-1135-4af2-85a6-b612bede4121",
+      "name": "Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -3840,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $('Webhook').first().json.body?.entry?.[0]?.changes?.[0]?.value;\nif (!value?.messages?.length) return [];\n\nconst contacts = value.contacts ?? [];\nconst isBsuid = v => /^[A-Z]{2}\\./.test(v ?? '');   // BSUID looks like EG.1139891858712101\nconst MEDIA = ['image', 'audio', 'video', 'document', 'sticker'];\n\n// Meta can batch several messages in one webhook → one item per message\nreturn value.messages.map(msg => {\n  const contact = contacts.find(c => c.wa_id === msg.from || (c.user_id && c.user_id === msg.from_user_id)) ?? contacts[0];\n\n  const phone   = !isBsuid(msg.from) ? msg.from : (!isBsuid(contact?.wa_id) ? contact?.wa_id : null) ?? null;\n  const user_id = msg.from_user_id ?? contact?.user_id ?? (isBsuid(msg.from) ? msg.from : null);\n\n  const media = MEDIA.includes(msg.type) ? msg[msg.type] : null;\n  const loc   = msg.type === 'location' ? msg.location : null;\n\n  // what the user actually wrote (text body or media caption)\n  const content = msg.type === 'text' ? (msg.text?.body ?? null) : (media?.caption ?? null);\n\n  // type-specific extras → payload (jsonb)\n  let payload = null;\n  if (loc) payload = { latitude: loc.latitude, longitude: loc.longitude, name: loc.name ?? null, address: loc.address ?? null, maps_link: `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}` };\n  if (msg.type === 'reaction') payload = { emoji: msg.reaction?.emoji ?? null, reacted_to: msg.reaction?.message_id ?? null };\n  if (msg.type === 'contacts') payload = { contacts: msg.contacts };\n  if (msg.type === 'audio') payload = { voice: msg.audio?.voice ?? null };\n\n  return { json: {\n    phone_number_id: value.metadata.phone_number_id,\n    phone, user_id,\n    reply_to: phone ?? user_id,            // always reply to this\n    username: contact?.profile?.username ?? null,\n    name: contact?.profile?.name ?? contact?.profile?.username ?? '',\n    message_id: msg.id,\n    timestamp: Number(msg.timestamp),\n    type: msg.type,\n    content,\n    caption: media?.caption ?? null,\n    button_reply: msg.button?.payload ?? msg.interactive?.button_reply?.id ?? msg.interactive?.list_reply?.id ?? null,\n    button_title: msg.button?.text ?? msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title ?? null,\n    reply_to_message_id: msg.context?.id ?? null,\n    media_id: media?.id ?? null,\n    media_mime_type: media?.mime_type ?? null,\n    media_filename: media?.filename ?? null,\n    media_sha256: media?.sha256 ?? null,\n    payload,\n  } };\n});"
+      },
+      "id": "c0eaabc8-e15b-4a70-b045-168f2288b15f",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3648,
+        2128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $('Webhook').first().json.body?.entry?.[0]?.changes?.[0]?.value;\nconst statuses = value?.statuses ?? [];\nconst contacts = value?.contacts ?? [];\n\n// Meta can send several statuses in one webhook → one item per status\nreturn statuses.map(s => {\n  const contact = contacts.find(c => c.user_id === s.recipient_user_id) ?? contacts[0];\n\n  return {\n    json: {\n      wamid: s.id,\n      status: s.status,                 // sent | delivered | read | played | failed\n      timestamp: Number(s.timestamp),\n      recipient: s.recipient_id,        // phone (or BSUID if phone is hidden)\n      user_id: s.recipient_user_id ?? contact?.user_id ?? null,   // BSUID\n      username: contact?.profile?.username ?? null,\n      error: s.errors?.[0]\n        ? `${s.errors[0].code}: ${s.errors[0].title}${s.errors[0].error_data?.details ? ' — ' + s.errors[0].error_data.details : ''}`\n        : null,\n    }\n  };\n});"
+      },
+      "id": "588b0357-fbe3-4f39-bd67-ae8d7aa78dea",
+      "name": "Parse Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3648,
+        2352
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update whatsapp.whatsapp_messages\nset status    = $2::text,\n    status_at = to_timestamp($4::bigint),\n    error     = case when $2::text = 'failed' then nullif($3, '') else error end,\n    user_id   = coalesce(user_id, nullif($5, ''))\nwhere wa_message_id = $1\n  and direction = 'outgoing'\n  and (\n    $2::text = 'failed'\n    or coalesce(array_position(array['sent','delivered','read','played'], status), 0)\n     < array_position(array['sent','delivered','read','played'], $2::text)\n  )\nreturning id, wa_message_id, status, sent_at, delivered_at, read_at, played_at;",
+        "options": {
+          "queryReplacement": "={{ [ $json.wamid, $json.status, $json.error ?? '', $json.timestamp, $json.user_id ?? '' ] }}"
+        }
+      },
+      "id": "d634b51f-71c8-4a41-8188-308438f21629",
+      "name": "Update WhatsApp Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "alwaysOutputData": true,
+      "position": [
+        -3200,
+        2352
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into whatsapp.whatsapp_messages\n  (wa_message_id, phone, user_id, direction, message_type, content,\n   button_reply, button_title, context_wa_message_id, wa_timestamp,\n   media_id, media_mime_type, media_filename, media_sha256, media_status,\n   payload, raw)\nvalues (\n  $1, nullif($2, ''), nullif($3, ''), 'incoming', $4, nullif($5, ''),\n  nullif($6, ''), nullif($7, ''), nullif($8, ''), to_timestamp($9::bigint),\n  nullif($10, ''), nullif($11, ''), nullif($12, ''), nullif($13, ''),\n  case when nullif($10, '') is not null then 'pending' end,\n  nullif($14, '')::jsonb, $15::jsonb\n)\non conflict (wa_message_id) do update\n  set wa_message_id = excluded.wa_message_id\nreturning id, contact_id, media_status,\n  (xmax = 0) as is_new,\n  case when media_id is not null\n       then whatsapp.whatsapp_media_path('incoming', wa_message_id, media_mime_type, created_at, media_filename)\n  end as storage_path;",
+        "options": {
+          "queryReplacement": "={{ [ $json.message_id, $json.phone ?? '', $json.user_id ?? '', $json.type, $json.content ?? '', $json.button_reply ?? '', $json.button_title ?? '', $json.reply_to_message_id ?? '', $json.timestamp, $json.media_id ?? '', $json.media_mime_type ?? '', $json.media_filename ?? '', $json.media_sha256 ?? '', $json.payload ? JSON.stringify($json.payload) : '', JSON.stringify($('Webhook').first().json.body) ] }}"
+        }
+      },
+      "id": "cba981a3-c45d-4176-a2f8-6de3bb08b42e",
+      "name": "Log Incoming Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "alwaysOutputData": true,
+      "position": [
+        -3424,
+        2128
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "Always returns the row (even for a duplicate) so storage_path is available for a retry. is_new = false for duplicates\n🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "new1",
+              "leftValue": "={{ $json.is_new === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "id": "80435a24-637d-443c-8260-2b53c215521e",
+      "name": "Is New Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3200,
+        2128
+      ],
+      "notes": "Meta sometimes resends the same message → is_new = false → stop here so we never reply twice"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Config').first().json.graph_version }}/{{ $('Config').first().json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: $('Parse Message').item.json.message_id, typing_indicator: { type: 'text' } }) }}",
+        "options": {}
+      },
+      "id": "3dc46edd-8ba5-4a38-8c1a-7c54b93f2a50",
+      "name": "Mark as Read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -2976,
+        2112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vVpZ00OcJSIzjewe",
+          "name": "WhatsApp Pixtaha Team"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "🔑 Credential: Header Auth — WhatsApp token (see note 🔑 2)"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt2",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(image|audio|video|document|sticker)$"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Media"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt1",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "text"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt3",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "location"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Location"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt4",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(button|interactive)$"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Button"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mt5",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "regex",
+                      "type": "string"
+                    },
+                    "rightValue": "^(reaction|system)$"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Silent"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unsupported"
+        }
+      },
+      "id": "0c47dc61-a926-4d09-ad4a-f007f9aa4591",
+      "name": "Message Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2752,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/{{ $('Config').first().json.graph_version }}/{{ $('Parse Message').item.json.media_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "b0bd0875-fcca-4202-b6bd-03f177cf4e6a",
+      "name": "Get Media URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -2512,
+        1856
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vVpZ00OcJSIzjewe",
+          "name": "WhatsApp Pixtaha Team"
+        }
+      },
+      "notes": "The returned link is valid for 5 minutes only\n🔑 Credential: Header Auth — WhatsApp token (see note 🔑 2)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "1a80f9bb-b41c-4af1-94e7-092302de338a",
+      "name": "Download Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -2272,
+        1856
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vVpZ00OcJSIzjewe",
+          "name": "WhatsApp Pixtaha Team"
+        }
+      },
+      "notes": "The media link needs the same WhatsApp token (Header Auth credential)\n🔑 Credential: Header Auth — WhatsApp token (see note 🔑 2)"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "destinationKey": "base64",
+        "options": {
+          "keepSource": "both"
+        }
+      },
+      "id": "346941ed-6e2a-46c8-8314-86eef7af802c",
+      "name": "Media To Base64",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -2048,
+        1856
+      ],
+      "notes": "Converts the file to base64 text for the AI. Works with filesystem binary mode"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/storage/v1/object/{{ $('Config').first().json.media_bucket }}/{{ $('Log Incoming Message').item.json.storage_path }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "={{ ($('Parse Message').item.json.media_mime_type || 'application/octet-stream').split(';')[0].trim() }}"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "5d2e6e0c-0f5b-4647-b9b7-1ea54be8fe18",
+      "name": "Upload to Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -1824,
+        1856
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "g1YhUvH7t0b5K7tb",
+          "name": "Supabase Pixtaha Demo [ demo@pixtaha.com ]"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Private bucket: the Supabase API credential sends the service_role key\n🔑 Credential: Supabase API (see note 🔑 3)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update whatsapp.whatsapp_messages\nset storage_path     = $2,\n    media_status     = 'stored',\n    media_size_bytes = nullif($3, '')::bigint,\n    media_error      = null\nwhere wa_message_id = $1\nreturning id, storage_path, media_status;",
+        "options": {
+          "queryReplacement": "={{ [ $('Parse Message').item.json.message_id, $('Log Incoming Message').item.json.storage_path, String($('Get Media URL').item.json.file_size ?? '') ] }}"
+        }
+      },
+      "id": "d6029e22-2494-44eb-86a8-4a7a45bebc64",
+      "name": "Mark Media Stored",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -1600,
+        1744
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update whatsapp.whatsapp_messages\nset media_status = 'failed',\n    media_error  = $2\nwhere wa_message_id = $1\nreturning id, media_status, media_error;",
+        "options": {
+          "queryReplacement": "={{ [ $('Parse Message').item.json.message_id, ('upload: ' + (typeof $json.error === 'string' ? $json.error : JSON.stringify($json.error ?? $json))).slice(0, 500) ] }}"
+        }
+      },
+      "id": "010f9435-d178-4b5c-b45c-47d5557feac7",
+      "name": "Mark Upload Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -1600,
+        1984
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mk1",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "audio"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Voice"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "mk2",
+                    "leftValue": "={{ $('Parse Message').item.json.type }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "image"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Other File"
+        }
+      },
+      "id": "4570e064-e9ff-4cec-b1e6-0938ccdf29b7",
+      "name": "Media Kind",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1376,
+        1840
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "25c80cc9-2a16-44e9-89ac-db8c426d7f63",
+      "name": "Run Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -4912,
+        2544
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with cfg as (\n  select json_object_agg(config_key, config_value) as c\n  from whatsapp.configurations\n  where environment = 'production'\n    and not is_secret\n)\nselect\n  rtrim(cfg.c->>'supabase_url', '/') as supabase_url,\n  cfg.c->>'media_bucket'             as media_bucket,\n  coalesce((select json_agg(o.name) from storage.objects o where o.bucket_id = cfg.c->>'media_bucket'), '[]'::json) as prefixes,\n  (select count(*) from storage.objects o where o.bucket_id = cfg.c->>'media_bucket') as total\nfrom cfg;",
+        "options": {}
+      },
+      "id": "ddb6426d-d405-470a-b0ba-ad89a33dc595",
+      "name": "Get Storage Object Paths",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -4672,
+        2544
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "Real paths of every file in the bucket (storage.objects) + non-secret Supabase settings\n🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "hf1",
+              "leftValue": "={{ Number($json.total) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "196c2a85-965d-4983-a97e-a38c3a0eac5e",
+      "name": "Has Files?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -4448,
+        2544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.supabase_url }}/storage/v1/object/{{ $json.media_bucket }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ prefixes: $json.prefixes }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ff409341-83c1-405f-acc1-a57fd657b431",
+      "name": "Delete Storage Files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -4224,
+        2528
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "g1YhUvH7t0b5K7tb",
+          "name": "Supabase Pixtaha Demo [ demo@pixtaha.com ]"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Deletes the files from disk through the Storage API. Deleting them with SQL only leaves them on disk\n🔑 Credential: Supabase API (see note 🔑 3)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "truncate table whatsapp.whatsapp_messages, whatsapp.whatsapp_contacts\n  restart identity;\n\nselect\n  (select count(*) from whatsapp.whatsapp_messages) as messages_left,\n  (select count(*) from whatsapp.whatsapp_contacts) as contacts_left,\n  (select count(*) from storage.objects\n    where bucket_id = (select config_value from whatsapp.configurations\n                       where environment = 'production' and config_key = 'media_bucket')) as files_left;",
+        "options": {
+          "queryBatching": "transaction"
+        }
+      },
+      "id": "53bdd68b-cce7-4baa-89de-b1e89a65d73c",
+      "name": "Wipe WhatsApp Tables",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -4000,
+        2560
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "wqNONfExRRLCqRx0",
+          "name": "Postgres pixtaha demo [ demo@pixtaha.com ]"
+        }
+      },
+      "notes": "Deletes messages and contacts and restarts the counters at 1. configurations and dashboard_agents are not touched\n🔑 Credential: Postgres (see note 🔑 1)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Webhook').first().json.query['hub.mode'] ?? '' }}",
+              "rightValue": "subscribe",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $('Webhook').first().json.query['hub.verify_token'] ?? '' }}",
+              "rightValue": "={{ $json.verify_token ?? '' }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.verify_token ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c4",
+              "leftValue": "={{ $json.verify_token ?? '' }}",
+              "rightValue": "CHANGE_ME",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9f634730-7df5-49ef-bfb7-da5938abc3f6",
+      "name": "Check Verify Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -4240,
+        1872
+      ],
+      "notes": "c3 + c4 reject the request if the token is empty or still CHANGE_ME in whatsapp.configurations. Keep the text CHANGE_ME in c4: never replace it with your real token"
+    },
+    {
+      "parameters": {
+        "content": "## 🔑 1 — Postgres credential (used by 8 nodes)\n\nThis is the key n8n uses to **read and write in your database**. Create it **once**, then select it in all 8 Postgres nodes.\n\n**In n8n:** Credentials → **Add credential** → **Postgres**\nGive it a clear name, e.g. `WA Postgres [production]`.\n\n**Where do I get the values?**\n\n👉 **Supabase Cloud** → your project → **Connect** button → **Session pooler**, then copy:\n- Host → looks like `aws-0-eu-central-1.pooler.supabase.com`\n- Port → `5432`\n- Database → `postgres`\n- User → looks like `postgres.abcdefgh` (with your project id)\n- Password → your database password\n- SSL → `Require`\n\nUse **Session pooler**, not *Direct connection*: the direct one often doesn't work from normal servers.\n\n👉 **Self-hosted Supabase:**\n- Host → the database server name or IP that n8n can reach\n- Port → `5432`\n- Database → `postgres`\n- User → `postgres`\n- Password → `POSTGRES_PASSWORD` from your `.env` file\n\n**Why the `postgres` user?** It is the database owner, so it can write everywhere. Never use the `anon` key or a dashboard login here.",
+        "height": 552,
+        "width": 852,
+        "color": 5
+      },
+      "id": "fc9cbacc-a910-4699-b541-d0a301e0659a",
+      "name": "🔑 1 Postgres",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -6656,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔑 2 — WhatsApp token: Header Auth credential (used by 3 nodes)\n\nThis is the key n8n uses to **talk to Meta** (mark as read, download media).\nUsed by: **Mark as Read**, **Get Media URL** and **Download Media**.\n\n### Step 1: Get a permanent token from Meta\nThe token on the Meta developer page expires after 24 hours. You need a **permanent** one:\n\n1. Open **business.facebook.com** → **Business settings**\n2. **Users** → **System users** → **Add** → give it a name, role **Admin**\n3. **Assign assets** → add your **app** and your **WhatsApp account**, with **full control**\n4. **Generate token** → choose your app\n   - Expiration → **Never**\n   - Permissions → `whatsapp_business_messaging` + `whatsapp_business_management`\n5. Copy the token. ⚠️ Meta shows it **only once**.\n\n### Step 2: Save it in n8n\n**Credentials** → **Add credential** → **Header Auth**\nGive it a clear name, e.g. `WA Meta Token [production]`, then fill 2 fields:\n- **Name** → `Authorization`\n- **Value** → `Bearer ` + your token\n\nExample: `Bearer EAAG...` (the word **Bearer**, one space, then the token)\n\n🚫 **Paste the token only in n8n.** Never in a node, a file, a chat or the terminal.",
+        "height": 552,
+        "width": 648,
+        "color": 5
+      },
+      "id": "e495fac5-0e4b-44a0-91b8-3d9ac3a65321",
+      "name": "🔑 2 WhatsApp token",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3648,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔑 3 — Supabase API credential (used by 2 nodes)\n\nThis is the key n8n uses to **save and delete files** in Storage.\nUsed by: **Upload to Storage** and **Delete Storage Files**.\n\n**In n8n:** Credentials → **Add credential** → **Supabase API**\nGive it a clear name, e.g. `WA Supabase [production]`, then fill 2 fields:\n- **Host** → your project link (the same as `supabase_url` in the table)\n- **Service Role Secret** → the `service_role` key\n\n**Where do I get the key?**\n\n👉 **Supabase Cloud** → Project Settings → **API Keys** → copy `service_role`\n(on newer projects, open the **Legacy API keys** tab)\n\n👉 **Self-hosted Supabase** →\n- Host → your public Supabase link (the one you open in the browser)\n- Key → `SERVICE_ROLE_KEY` from your `.env` file\n\n⚠️ **Error `signature verification failed`?** The key is from a **different** project. Copy it again from the right one.\n\n🚫 **Keep this key secret.** It can open everything in your project. Use it only inside n8n, never in a dashboard, a website or a browser.",
+        "height": 444,
+        "width": 604,
+        "color": 5
+      },
+      "id": "ab2f2448-4807-414a-9c6f-d6b19541148b",
+      "name": "🔑 3 Supabase API",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2512,
+        2032
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Load Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Check Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ack Message": {
+      "main": [
+        [
+          {
+            "node": "Load Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Type": {
+      "main": [
+        [
+          {
+            "node": "Parse Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message": {
+      "main": [
+        [
+          {
+            "node": "Log Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Status": {
+      "main": [
+        [
+          {
+            "node": "Update WhatsApp Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Is New Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Message?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Read": {
+      "main": [
+        [
+          {
+            "node": "Message Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Type": {
+      "main": [
+        [
+          {
+            "node": "Get Media URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "Get Media URL": {
+      "main": [
+        [
+          {
+            "node": "Download Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Media": {
+      "main": [
+        [
+          {
+            "node": "Media To Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Media To Base64": {
+      "main": [
+        [
+          {
+            "node": "Upload to Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Storage": {
+      "main": [
+        [
+          {
+            "node": "Mark Media Stored",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Upload Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Media Stored": {
+      "main": [
+        [
+          {
+            "node": "Media Kind",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Upload Failed": {
+      "main": [
+        [
+          {
+            "node": "Media Kind",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Manually": {
+      "main": [
+        [
+          {
+            "node": "Get Storage Object Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Storage Object Paths": {
+      "main": [
+        [
+          {
+            "node": "Has Files?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Files?": {
+      "main": [
+        [
+          {
+            "node": "Delete Storage Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wipe WhatsApp Tables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Storage Files": {
+      "main": [
+        [
+          {
+            "node": "Wipe WhatsApp Tables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Return Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5c01d0ec25157ecd44c71e4414998fba07558f97fca7a48283ace6e1b2322586"
+  }
+}
